@@ -24,14 +24,18 @@ const userSchema = new mongoose.Schema({
     companyName:{
         type:String, required:false
     },
-    location:{
-        type:String, required:true
-    },
+    location: {
+  city: { type: String, required: true },
+  country: { type: String, required: true }
+},
     role:{
         type:String,
         enum:["candidate","company"],
         required:true
-    }
+    },
+    otp: String,
+    otpExpiry: Date,
+    isVerified: { type: Boolean, default: false }
 },{timestamps:true})
 
 module.exports = mongoose.model("User",userSchema)

@@ -1,6 +1,12 @@
 const jwt = require("jsonwebtoken");
 const User = require("../Model/UserModel");
 
+const sendOTPEmail = require("../utils/sendOTPEmail");
+
+const generateOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
 const auth = async (req, res, next) => {
   try {
     const authHeader = req.header("Authorization");
