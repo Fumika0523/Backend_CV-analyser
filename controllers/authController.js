@@ -14,39 +14,42 @@ const generateToken = (user) => {
   );
 };
 
-// =======================
+
 // SIGN UP
-// =======================
 exports.signUp = async (req, res) => {
   try {
-    const { email, password, role, firstName, lastName } = req.body;
+    const { firstName, lastName, email, password, role, phoneNumber, companyName, location } = req.body;
 
-    // check if user exists
-    let userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email });
 
     if (userExists) {
-      return res.status(400).json({
-        message: "User already exists"
-      });
+      return res.status(400).json({ message: "User already exists" });
     }
 
-    // hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // create user
+    const otp = generateOTP();
+
     const user = await User.create({
       firstName,
       lastName,
       email,
       password: hashedPassword,
-      role
+      role,
+      phoneNumber,
+      companyName,
+      location,
+      otp,
+      otpExpiry: Date.now() + 5 * 60 * 1000,
+      isVerified: false,
     });
 
+    await sendOTPEmail(email, otp);
+
     res.status(201).json({
-      message: "User registered successfully",
-      user,
-      token: generateToken(user)
+      message: "OTP sent to your email",
+      userId: user._id,
     });
 
   } catch (error) {
@@ -55,14 +58,45 @@ exports.signUp = async (req, res) => {
   }
 };
 
-// =======================
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (user.otpExpiry < Date.now()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    user.isVerified = true;
+    user.otp = null;
+    user.otpExpiry = null;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "OTP verified successfully",
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // SIGN IN
-// =======================
 exports.signIn = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // find user
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -71,7 +105,14 @@ exports.signIn = async (req, res) => {
       });
     }
 
-    // check password
+    // ❗ NEW: block unverified users
+    if (!user.isVerified) {
+      return res.status(403).json({
+        message: "Please verify your email with OTP before logging in",
+        userId: user._id // send this so frontend can trigger OTP modal
+      });
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -80,7 +121,6 @@ exports.signIn = async (req, res) => {
       });
     }
 
-    // success
     res.status(200).json({
       message: "Login successful",
       user: {
