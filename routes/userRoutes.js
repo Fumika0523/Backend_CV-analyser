@@ -4,7 +4,8 @@ const router = express.Router();
 const {
   signUp,
   signIn,
-  verifyOTP 
+  verifyOTP,
+  getUser
 } = require("../controllers/authController.js");
 
 // test route
@@ -16,4 +17,5 @@ router.get("/test", (req, res) => {
 router.post("/signup", signUp);
 router.post("/signin", signIn);
 router.post("/verify-otp", verifyOTP);
+router.get("/user-profile",getUser)
 module.exports = router;
