@@ -21,7 +21,7 @@ connection();
 app.use(cors());
 app.use(express.json());
 
-// ✅ ADD THIS
+
 app.use("/api/users", require("./routes/userRoutes"));
 
 
