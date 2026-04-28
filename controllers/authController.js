@@ -8,8 +8,8 @@ const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString()
 const generateToken = (user) => {
   return jwt.sign(
     { id: user._id, role: user.role },
-    process.env.JWT_SECRET_KEY || "nodejs",
-    { expiresIn: "7d" }
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: "1h" }
   );
 };
 
@@ -62,64 +62,105 @@ async function sendOTPEmail(email, otp) {
   });
 }
 
-exports.verifyOTP = async (req, res) => {
+exports.verifyOtp = async (req, res) => {
   try {
     const { userId, otp } = req.body;
+
     const user = await User.findById(userId);
 
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
-    if (user.otpExpiry < Date.now()) return res.status(400).json({ message: "OTP expired" });
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
 
-    user.isVerified = true;
-    user.otp = null;
-    user.otpExpiry = null;
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    if (!user.otpExpiry || user.otpExpiry < Date.now()) {
+      return res.status(400).json({ message: "OTP expired" });
+    }
+
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+
     await user.save();
 
-    // ← Return token so the user is actually signed in after verifying
-    res.status(200).json({
-      message: "OTP verified successfully",
+    return res.status(200).json({
+      message: "Login successful",
+      user: {
+        userId: user._id,
+        name: user.firstName,
+        email: user.email,
+        role: user.role,
+      },
       token: generateToken(user),
-      user: { id: user._id, name: user.firstName, email: user.email, role: user.role },
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}; 
+
+exports.resendOtp = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(400).json({ message: "User not found" });
+    }
+
+    const otp = generateOTP();
+
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+
+    await user.save();
+    await sendOTPEmail(user.email, otp);
+
+    return res.status(200).json({
+      message: "A new OTP has been sent.",
+    });
+  } catch (error) {
+    console.error("Resend OTP error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 exports.signIn = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email });
 
-    if (!user) return res.status(400).json({ message: "Email not found" });
-
-    if (!user.isVerified) {
-      // Resend a fresh OTP so they're not stuck
-      const otp = generateOTP();
-      user.otp = otp;
-      user.otpExpiry = Date.now() + 5 * 60 * 1000;
-      await user.save();
-      await sendOTPEmail(email, otp);
-
-      return res.status(403).json({
-        message: "Please verify your email. A new OTP has been sent.",
-        userId: user._id,
-      });
+    if (!user) {
+      return res.status(400).json({ message: "Email not found" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid password" });
 
-    res.status(200).json({
-      message: "Login successful",
-      user: { id: user._id, name: user.firstName, email: user.email, role: user.role },
-      token: generateToken(user),
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
+
+    // Password is correct → send OTP
+    const otp = generateOTP();
+
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+
+    await user.save();
+    await sendOTPEmail(user.email, otp);
+
+    return res.status(200).json({
+      message: "OTP sent to your email",
+      userId: user._id,
+      email: user.email,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Sign in error:", error);
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
