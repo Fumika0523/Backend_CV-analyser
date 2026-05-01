@@ -1,6 +1,12 @@
 const mongoose = require("mongoose")
 
 const userSchema = new mongoose.Schema({
+    //1,2,3.....
+    userId:{
+        type:Number,
+        required:true,
+        unique:true
+    },
     firstName:{
         type:String, required:true
     },
@@ -26,7 +32,10 @@ const userSchema = new mongoose.Schema({
     },
     location: {
   city: { type: String, required: true },
-  country: { type: String, required: true }
+  country: { type: String, required: true },
+  //status update by ourside - admin system
+//   status:{ type: String, 
+//     required: true , default:"Not Applied"},
 },
     role:{
         type:String,

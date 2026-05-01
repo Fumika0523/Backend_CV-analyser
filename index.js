@@ -11,6 +11,7 @@ const mongoose = require ('mongoose');
 const fs = require ('fs');
 const { createObjectCsvWriter } = require ('csv-writer');
 const OpenAI = require ('openai');
+const jobPostRoutes = require("./routes/jobRoutes");
 
 app.use(cors());
 app.use(express.json());
@@ -25,3 +26,4 @@ app.use("/api/cv", require("./routes/cvRoutes"));
 app.listen(Port,()=>{
     console.log(`Server started at Port no.-${Port}`)
 })
+
