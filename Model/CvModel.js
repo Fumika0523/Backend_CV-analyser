@@ -7,13 +7,29 @@ const cvSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
+    candidateId: {
+      type: Number,
+      required: true,
+    },
+
+    version: {
+      type: Number,
+      required: true,
+    },
+
     fileName: {
       type: String,
       required: true,
     },
-    rawText: {
+
+    filePath: {
       type: String,
+      required: true,
     },
+
+    rawText: String,
+
     skills: {
       type: [String],
       default: [],
