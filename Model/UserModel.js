@@ -30,6 +30,10 @@ const userSchema = new mongoose.Schema({
     companyName:{
         type:String, required:false
     },
+    companyDescription: {
+        type: String,
+        required: false,
+    },
     location: {
   city: { type: String, required: true },
   country: { type: String, required: true },
@@ -44,7 +48,7 @@ const userSchema = new mongoose.Schema({
     },
     otp: String,
     otpExpiry: Date,
-    // isVerified: { type: Boolean, default: false }
+    isVerified: { type: Boolean, default: false }
 },{timestamps:true})
 
 module.exports = mongoose.model("User",userSchema)

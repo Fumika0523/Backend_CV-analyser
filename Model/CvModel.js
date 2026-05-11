@@ -1,23 +1,12 @@
 const mongoose = require("mongoose");
 
-const cvSchema = new mongoose.Schema(
+const CvSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-
-    candidateId: {
-      type: Number,
-      required: true,
-    },
-
-    version: {
-      type: Number,
-      required: true,
-    },
-
     fileName: {
       type: String,
       required: true,
@@ -27,15 +16,12 @@ const cvSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-
-    rawText: String,
-
-    skills: {
-      type: [String],
-      default: [],
-    },
+    uploadedAt:{
+      type:Date,
+      default:Date.now
+    }
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("CV", cvSchema);
+module.exports = mongoose.model("CV", CvSchema);

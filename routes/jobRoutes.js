@@ -10,18 +10,13 @@ const {
   deleteJobPost,
 } = require("../controllers/jobController");
 
-const { protect } = require("../middleware/auth")
+const authMiddleware = require("../middleware/auth");
 
-router.post("/create", protect, createJobPost);
-
+router.post("/create", authMiddleware, createJobPost);
 router.get("/", getAllJobPosts);
-
-router.get("/my-jobs", protect, getMyCompanyJobPosts);
-
+router.get("/my-jobs", authMiddleware, getMyCompanyJobPosts);
 router.get("/:id", getSingleJobPost);
-
-router.put("/:id", protect, updateJobPost);
-
-router.delete("/:id", protect, deleteJobPost);
+router.put("/:id", authMiddleware, updateJobPost);
+router.delete("/:id", authMiddleware, deleteJobPost);
 
 module.exports = router;

@@ -11,7 +11,7 @@ const mongoose = require ('mongoose');
 const fs = require ('fs');
 const { createObjectCsvWriter } = require ('csv-writer');
 const OpenAI = require ('openai');
-const jobPostRoutes = require("./routes/jobRoutes");
+
 
 app.use(cors());
 app.use(express.json());
@@ -20,8 +20,10 @@ dotenv.config();
 
 connection();
 
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/cv", require("./routes/cvRoutes"));
+app.use( require("./routes/userRoutes"));
+app.use(require("./routes/authRoutes"));
+app.use("/cv", require("./routes/cvRoutes"));
+app.use("/jobs", require("./routes/jobRoutes"));
 
 app.listen(Port,()=>{
     console.log(`Server started at Port no.-${Port}`)
