@@ -180,7 +180,7 @@ exports.resendOtp = async (req, res) => {
 
 //sign in
 exports.signIn = async (req, res) => {
-  try {
+  //try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
@@ -223,9 +223,9 @@ exports.signIn = async (req, res) => {
         role: user.role,
       },
     });
-  } catch (error) {
-    console.error("SignIn error:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
+  // } catch (error) {
+  //   console.error("SignIn error:", error);
+  //   return res.status(500).json({ message: "Server error" });
+  // }
 };
 

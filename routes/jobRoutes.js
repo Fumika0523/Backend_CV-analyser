@@ -13,7 +13,7 @@ const {
 const authMiddleware = require("../middleware/auth");
 
 router.post("/create", authMiddleware, createJobPost);
-router.get("/", getAllJobPosts);
+router.get("/all-jobs", getAllJobPosts);
 router.get("/my-jobs", authMiddleware, getMyCompanyJobPosts);
 router.get("/:id", getSingleJobPost);
 router.put("/:id", authMiddleware, updateJobPost);

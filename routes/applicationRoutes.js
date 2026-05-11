@@ -1,9 +1,11 @@
 const express = require("express");
-const { applyForJob, getApplications, updateApplicationStatus } = require("../controllers/cvController");
 const router = express.Router();
+const { applyForJob, getApplications, updateApplicationStatus } = require("../controllers/applicationController");
 
-router.post("/apply", auth, applyForJob)
-router.get("/applications", auth, getApplications)
-router.put("/update-applications/:id/status",auth, updateApplicationStatus)
+// const auth = require('../middleware/auth')
+
+router.post("/apply",  applyForJob)
+router.get("/applications", getApplications)
+router.put("/update-applications/:id/status", updateApplicationStatus)
 
 module.exports = router;

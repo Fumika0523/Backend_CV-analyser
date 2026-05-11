@@ -3,6 +3,10 @@ const Job = require("../Model/jobModel");
 // CREATE JOB POST - company only
 exports.createJobPost = async (req, res) => {
   try {
+    if (req.user.role !== "company") {
+      return res.status(403).json({ message: "Only companies can post jobs" });
+    }
+
     const {
       title,
       description,
@@ -13,11 +17,8 @@ exports.createJobPost = async (req, res) => {
       skills,
     } = req.body;
 
-    const companyId = req.user.id; 
-    // req.user comes from auth middleware after JWT verification
-
-    const jobPost = await JobPost.create({
-      companyId,
+    const job = await Job.create({
+      companyId: req.user.id,
       title,
       description,
       requirements,
@@ -28,113 +29,114 @@ exports.createJobPost = async (req, res) => {
     });
 
     res.status(201).json({
-      message: "Job post created successfully",
-      jobPost,
+      message: "Job created successfully",
+      job,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Create job error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// GET ALL JOB POSTS
+// GET ALL JOBS
 exports.getAllJobPosts = async (req, res) => {
   try {
-    const jobPosts = await JobPost.find()
-      .populate("companyId", "firstName lastName companyName email location")
+    const jobs = await Job.find()
+      .populate("companyId", "firstName lastName companyName email city country")
       .sort({ createdAt: -1 });
 
-    res.status(200).json(jobPosts);
+    res.status(200).json(jobs);
   } catch (error) {
-    console.error(error);
+    console.error("Get all jobs error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// GET JOB POSTS BY LOGGED-IN COMPANY
+// GET MY COMPANY JOBS
 exports.getMyCompanyJobPosts = async (req, res) => {
   try {
-    const companyId = req.user.id;
+    if (req.user.role !== "company") {
+      return res.status(403).json({ message: "Only companies can view their jobs" });
+    }
 
-    const jobPosts = await JobPost.find({ companyId }).sort({
+    const jobs = await Job.find({ companyId: req.user.id }).sort({
       createdAt: -1,
     });
 
-    res.status(200).json(jobPosts);
+    res.status(200).json(jobs);
   } catch (error) {
-    console.error(error);
+    console.error("Get my jobs error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// GET SINGLE JOB POST
+// GET SINGLE JOB
 exports.getSingleJobPost = async (req, res) => {
   try {
-    const jobPost = await JobPost.findById(req.params.id).populate(
+    const job = await Job.findById(req.params.id).populate(
       "companyId",
-      "firstName lastName companyName email location"
+      "firstName lastName companyName email city country"
     );
 
-    if (!jobPost) {
-      return res.status(404).json({ message: "Job post not found" });
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
     }
 
-    res.status(200).json(jobPost);
+    res.status(200).json(job);
   } catch (error) {
-    console.error(error);
+    console.error("Get single job error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// UPDATE JOB POST - only owner company
+// UPDATE JOB
 exports.updateJobPost = async (req, res) => {
   try {
-    const jobPost = await JobPost.findById(req.params.id);
+    const job = await Job.findById(req.params.id);
 
-    if (!jobPost) {
-      return res.status(404).json({ message: "Job post not found" });
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
     }
 
-    if (jobPost.companyId.toString() !== req.user.id) {
+    if (job.companyId.toString() !== req.user.id) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    const updatedJobPost = await JobPost.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
 
     res.status(200).json({
-      message: "Job post updated successfully",
-      jobPost: updatedJobPost,
+      message: "Job updated successfully",
+      job: updatedJob,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Update job error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// DELETE JOB POST - only owner company
+// DELETE JOB
 exports.deleteJobPost = async (req, res) => {
   try {
-    const jobPost = await JobPost.findById(req.params.id);
+    const job = await Job.findById(req.params.id);
 
-    if (!jobPost) {
-      return res.status(404).json({ message: "Job post not found" });
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
     }
 
-    if (jobPost.companyId.toString() !== req.user.id) {
+    if (job.companyId.toString() !== req.user.id) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    await jobPost.deleteOne();
+    await job.deleteOne();
 
     res.status(200).json({
-      message: "Job post deleted successfully",
+      message: "Job deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Delete job error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
