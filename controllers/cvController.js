@@ -1,11 +1,10 @@
 const CV = require("../Model/CVModel");
+const User = require("../Model/UserModel");
 const path = require("path");
-const fs = require("fs");
+const fs = require("fs/promises");
 
-const ensureDirExists = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
+const ensureDirExists = async (dirPath) => {
+  await fs.mkdir(dirPath, { recursive: true });
 };
 
 exports.uploadCV = async (req, res) => {
@@ -14,28 +13,47 @@ exports.uploadCV = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    const userId = req.user.id;
+    if (req.file.mimetype !== "application/pdf") {
+      return res.status(400).json({ message: "Only PDF files are allowed" });
+    }
 
-    const userCVDir = path.join(
+    const mongoUserId = req.user.id;
+
+    const user = await User.findById(mongoUserId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role !== "candidate") {
+      return res.status(403).json({
+        message: "Only candidates can upload CV",
+      });
+    }
+
+    const candidateId = user.userId;
+
+    const cvCount = await CV.countDocuments({ candidateId });
+    const version = cvCount + 1;
+
+    const uploadsDir = path.join(
       __dirname,
       "../uploads/cvs",
-      userId.toString()
+      candidateId.toString()
     );
 
-    ensureDirExists(userCVDir);
+    await ensureDirExists(uploadsDir);
 
-    const safeOriginalName = req.file.originalname.replace(/\s+/g, "_");
+    const newFileName = `${candidateId}_v${version}.pdf`;
+    const newFilePath = path.join(uploadsDir, newFileName);
 
-    const newFileName = `${userId}_cv_${Date.now()}_${safeOriginalName}`;
-
-    const newFilePath = path.join(userCVDir, newFileName);
-
-    fs.renameSync(req.file.path, newFilePath);
+    await fs.rename(req.file.path, newFilePath);
 
     const cv = await CV.create({
-      userId,
-      fileName: req.file.originalname,
-      filePath: `/uploads/cvs/${userId}/${newFileName}`,
+      candidateId,
+      version,
+      fileName: newFileName,
+      filePath: `/uploads/cvs/${candidateId}/${newFileName}`,
     });
 
     res.status(201).json({
@@ -50,9 +68,17 @@ exports.uploadCV = async (req, res) => {
 
 exports.getLatestCV = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const mongoUserId = req.user.id;
 
-    const cv = await CV.findOne({ userId }).sort({ uploadedAt: -1 });
+    const user = await User.findById(mongoUserId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const candidateId = user.userId;
+
+    const cv = await CV.findOne({ candidateId }).sort({ version: -1 });
 
     if (!cv) {
       return res.status(404).json({ message: "No CV found" });

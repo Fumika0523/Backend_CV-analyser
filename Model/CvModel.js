@@ -2,11 +2,16 @@ const mongoose = require("mongoose");
 
 const CvSchema = new mongoose.Schema(
   {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+    candidateId: {
+      type: Number,
       required: true,
     },
+
+    version: {
+      type: Number,
+      required: true,
+    },
+
     fileName: {
       type: String,
       required: true,
@@ -16,10 +21,11 @@ const CvSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    uploadedAt:{
-      type:Date,
-      default:Date.now
-    }
+
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { timestamps: true }
 );

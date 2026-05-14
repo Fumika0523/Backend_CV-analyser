@@ -1,6 +1,7 @@
 const express = require('express')
 const app = express()
 const dotenv = require('dotenv')
+dotenv.config();
 const Port = 8002
 const cors = require('cors')
 const connection=require('./db/connection')
@@ -16,7 +17,7 @@ const OpenAI = require ('openai');
 app.use(cors());
 app.use(express.json());
 
-dotenv.config();
+
 
 connection();
 

@@ -18,7 +18,9 @@ const generateToken = (user) => {
 //req = request from frontend
 //res= response back to frontend
 exports.signUp = async (req, res) => {
- // try {
+  let user;
+
+  try {
     const {
       firstName,
       lastName,
@@ -72,7 +74,7 @@ exports.signUp = async (req, res) => {
       userData.companyDescription = companyDescription;
     }
 
-    const user = await User.create(userData);
+    user = await User.create(userData);
 
     await sendOTPEmail(email, otp);
 
@@ -82,12 +84,17 @@ exports.signUp = async (req, res) => {
       mongoId: user._id,
       userId: user.userId,
     });
-  // } catch (error) {
-  //   console.error("SignUp error:", error);
-  //   return res.status(500).json({
-  //     message: "Server error",
-  //   });
-  // }
+  } catch (error) {
+    console.error("SignUp error:", error);
+
+    if (user?._id) {
+      await User.findByIdAndDelete(user._id);
+    }
+
+    return res.status(500).json({
+      message: "Signup failed. Please try again.",
+    });
+  }
 };
 
 //Verify OTP

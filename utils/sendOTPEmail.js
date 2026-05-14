@@ -9,7 +9,8 @@ const sendOTPEmail = async (email, otp) => {
       pass: process.env.EMAIL_PASS,
     },
   });
-
+await transporter.verify();
+console.log("SMTP ready");
   await transporter.sendMail({
     from: `"CV-Analyser" <${process.env.EMAIL_USER}>`,
     to: email,
@@ -17,5 +18,6 @@ const sendOTPEmail = async (email, otp) => {
     html: `<h2>Your OTP is: ${otp}</h2><p>Valid for 5 minutes</p>`,
   });
 };
-
+console.log("EMAIL_USER:", process.env.EMAIL_USER);
+console.log("EMAIL_PASS:", process.env.EMAIL_PASS);
 module.exports = sendOTPEmail;
