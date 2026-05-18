@@ -7,30 +7,25 @@ const ensureDirExists = async (dirPath) => {
   await fs.mkdir(dirPath, { recursive: true });
 };
 
+//signed in user
 exports.uploadCV = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
-
     if (req.file.mimetype !== "application/pdf") {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
-
     const mongoUserId = req.user.id;
-
     const user = await User.findById(mongoUserId);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
     if (user.role !== "candidate") {
       return res.status(403).json({
         message: "Only candidates can upload CV",
       });
     }
-
     const candidateId = user.userId;
 
     const cvCount = await CV.countDocuments({ candidateId });
@@ -65,6 +60,29 @@ exports.uploadCV = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+//guest upload and temporary stored the CV and when you signed up. it should link, it can be ID / temporary Id
+exports.gueustUploadCV = async(req,res)=>{
+try{
+  //check if file exists
+if(!req.file){
+  return res.status(400).json({
+    message:"No file uploaded"
+  })
+}
+// Checking file type
+if(req.file.mimetype !== "application/pdf"){
+  return res.status(400).json({
+    message:"Only PDF files are allowed"
+  })
+}
+
+}catch(e){
+  console.error("Upload CV error:", error);
+    res.status(500).json({ message: "Server error" });
+}
+}
 
 exports.getLatestCV = async (req, res) => {
   try {

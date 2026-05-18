@@ -17,8 +17,6 @@ const OpenAI = require ('openai');
 app.use(cors());
 app.use(express.json());
 
-
-
 connection();
 
 app.use( require("./routes/userRoutes"));
