@@ -2,6 +2,8 @@ const CV = require("../Model/CVModel");
 const User = require("../Model/UserModel");
 const path = require("path");
 const fs = require("fs/promises");
+const { default: PdfParse } = require("pdf-parse-new");
+
 
 const ensureDirExists = async (dirPath) => {
   await fs.mkdir(dirPath, { recursive: true });
@@ -61,28 +63,63 @@ exports.uploadCV = async (req, res) => {
   }
 };
 
-
 //guest upload and temporary stored the CV and when you signed up. it should link, it can be ID / temporary Id
-exports.gueustUploadCV = async(req,res)=>{
-try{
-  //check if file exists
-if(!req.file){
-  return res.status(400).json({
-    message:"No file uploaded"
-  })
-}
-// Checking file type
-if(req.file.mimetype !== "application/pdf"){
-  return res.status(400).json({
-    message:"Only PDF files are allowed"
-  })
-}
+exports.guestUploadCV = async (req, res) => {
+  //try {
+    const { guestSessionId } = req.body;
 
-}catch(e){
-  console.error("Upload CV error:", error);
-    res.status(500).json({ message: "Server error" });
-}
-}
+    if (!guestSessionId) {
+      return res.status(400).json({
+        message: "Guest session ID is required",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "No file uploaded",
+      });
+    }
+
+    if (req.file.mimetype !== "application/pdf") {
+      return res.status(400).json({
+        message: "Only PDF files are allowed",
+      });
+    }
+
+    const dataBuffer = await fs.readFile(req.file.path);
+
+    const data = await PdfParse(dataBuffer);
+
+    console.log("PDF parsed successfully!");
+    console.log(data);
+
+    const extractedText = data.text;
+
+    console.log("--- Extracted Text ---");
+    console.log(extractedText);
+
+    const cv = await CV.create({
+      candidateId: null,
+      guestSessionId,
+      version: 1,
+      fileName: req.file.filename,
+      filePath: `/uploads/cvs/${req.file.filename}`,
+      rawText: extractedText,
+    });
+
+    return res.status(200).json({
+      message: "Guest CV uploaded successfully",
+      cv,
+      extractedText,
+    });
+  // } catch (error) {
+  //   console.error("Guest upload CV error:", error);
+
+  //   return res.status(500).json({
+  //     message: "Server error",
+  //   });
+  // }
+};
 
 exports.getLatestCV = async (req, res) => {
   try {

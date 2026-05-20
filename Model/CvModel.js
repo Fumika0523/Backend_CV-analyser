@@ -4,12 +4,19 @@ const CvSchema = new mongoose.Schema(
   {
     candidateId: {
       type: Number,
-      required: true,
+      required: false,
+      default: null,
+    },
+
+    guestSessionId: {
+      type: String,
+      required: false,
+      default: null,
     },
 
     version: {
       type: Number,
-      required: true,
+      default: 1,
     },
 
     fileName: {
@@ -20,6 +27,11 @@ const CvSchema = new mongoose.Schema(
     filePath: {
       type: String,
       required: true,
+    },
+
+    rawText: {
+      type: String,
+      default: "",
     },
 
     uploadedAt: {

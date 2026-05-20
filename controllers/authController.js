@@ -3,6 +3,7 @@ const User = require("../Model/UserModel");
 const bcrypt = require("bcryptjs");
 const sendOTPEmail = require("../utils/sendOTPEmail")
 const getNextSequence = require("../utils/getNextSequence");
+const CV = require("../Model/CVModel");
 
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -68,7 +69,22 @@ exports.signUp = async (req, res) => {
       otpExpiry: Date.now() + 5 * 60 * 1000,
       isVerified: false,
     };
+console.log("guestSessionId from signup:", req.body.guestSessionId);
+console.log("new candidate numeric userId:", userData.userId);
 
+if (role === "candidate" && req.body.guestSessionId) {
+  const updatedCV = await CV.updateMany(
+    { guestSessionId: req.body.guestSessionId },
+    {
+      $set: {
+        candidateId: userData.userId,
+        guestSessionId: null,
+      },
+    }
+  );
+
+  console.log("Guest CV link result:", updatedCV);
+}
     if (role === "company") {
       userData.companyName = companyName;
       userData.companyDescription = companyDescription;

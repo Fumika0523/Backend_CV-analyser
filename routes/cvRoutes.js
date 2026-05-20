@@ -4,7 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const { uploadCV, getLatestCV ,gueustUploadCV} = require("../controllers/cvController");
+const { uploadCV, getLatestCV ,gueustUploadCV, guestUploadCV} = require("../controllers/cvController");
 const auth = require("../middleware/auth");
 
 const storage = multer.diskStorage({
@@ -51,7 +51,10 @@ const upload = multer({
   fileFilter,
 });
 
-router.post("/cv/upload", auth, upload.single("cv"), uploadCV);
+router.post("/cv/upload", auth, upload.single("cv"),
+ uploadCV);
+ router.post("/cv/guest-upload", upload.single("cv"),
+ guestUploadCV);
 router.get("/cv/latest", auth, getLatestCV);
 
 module.exports = router;
