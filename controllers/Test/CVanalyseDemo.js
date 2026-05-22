@@ -5,7 +5,9 @@ const pdfParse = require('pdf-parse-new'); // Use the modern package
 // filePath = 'sample.pdf'
 // PDF parsing can take time, so we use async/await
 
+
 async function parsePDF(filePath) {
+
 
     // Start a try block
     // If something fails, execution jumps to catch

@@ -34,6 +34,26 @@ const CvSchema = new mongoose.Schema(
       default: "",
     },
 
+    skillsDetected: {
+      type: [String],
+      default: [],
+    },
+
+    suggestedRoles: {
+      type: [String],
+      default: [],
+    },
+
+    improvements: {
+      type: [String],
+      default: [],
+    },
+
+    resumeScore: {
+      type: Number,
+      default: null,
+    },
+
     uploadedAt: {
       type: Date,
       default: Date.now,
@@ -42,4 +62,4 @@ const CvSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("CV", CvSchema);
+module.exports = mongoose.models.CV || mongoose.model("CV", CvSchema);

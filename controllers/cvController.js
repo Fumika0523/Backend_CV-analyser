@@ -3,7 +3,7 @@ const User = require("../Model/UserModel");
 const path = require("path");
 const fs = require("fs/promises");
 const { default: PdfParse } = require("pdf-parse-new");
-
+const CVAnalyse = require("../services/CVAnalyse")
 
 const ensureDirExists = async (dirPath) => {
   await fs.mkdir(dirPath, { recursive: true });
@@ -46,12 +46,17 @@ exports.uploadCV = async (req, res) => {
 
     await fs.rename(req.file.path, newFilePath);
 
+    const analysis = await CVAnalyse(newFilePath);
+  
     const cv = await CV.create({
-      candidateId,
-      version,
-      fileName: newFileName,
-      filePath: `/uploads/cvs/${candidateId}/${newFileName}`,
-    });
+  candidateId,
+  version,
+  fileName: newFileName,
+  filePath: `/uploads/cvs/${candidateId}/${newFileName}`,
+  rawText: analysis.rawText,
+  skillsDetected: analysis.skillsDetected,
+  analysisStatus: "completed",
+});
 
     res.status(201).json({
       message: "CV uploaded successfully",
@@ -86,32 +91,39 @@ exports.guestUploadCV = async (req, res) => {
       });
     }
 
-    const dataBuffer = await fs.readFile(req.file.path);
+    // const dataBuffer = await fs.readFile(req.file.path);
 
-    const data = await PdfParse(dataBuffer);
+    // const data = await PdfParse(dataBuffer);
 
-    console.log("PDF parsed successfully!");
-    console.log(data);
+    // console.log("PDF parsed successfully!");
+    // console.log(data);
 
-    const extractedText = data.text;
+    // const extractedText = data.text;
 
-    console.log("--- Extracted Text ---");
-    console.log(extractedText);
 
-    const cv = await CV.create({
-      candidateId: null,
-      guestSessionId,
-      version: 1,
-      fileName: req.file.filename,
-      filePath: `/uploads/cvs/${req.file.filename}`,
-      rawText: extractedText,
-    });
+    // console.log("--- Extracted Text ---");
+    // console.log(extractedText);
 
-    return res.status(200).json({
-      message: "Guest CV uploaded successfully",
-      cv,
-      extractedText,
-    });
+    const analysis = await CVAnalyse(req.file.path);
+
+   const cv = await CV.create({
+  candidateId: null,
+  guestSessionId,
+  version: 1,
+  fileName: req.file.filename,
+  filePath: `/uploads/cvs/${req.file.filename}`,
+  rawText: analysis.rawText,
+  skillsDetected: analysis.skillsDetected,
+  analysisStatus: "completed",
+});
+
+   return res.status(200).json({
+  message: "Guest CV uploaded and analysed successfully",
+  cv,
+  extractedText: analysis.rawText,
+  skillsDetected: analysis.skillsDetected,
+});
+
   // } catch (error) {
   //   console.error("Guest upload CV error:", error);
 
