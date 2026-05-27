@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const { default: PdfParse } = require("pdf-parse-new");
 const CVAnalyse = require("../services/CVAnalyse")
+const Skill = require('../Model/skillsModel')
 
 const ensureDirExists = async (dirPath) => {
   await fs.mkdir(dirPath, { recursive: true });
@@ -117,9 +118,15 @@ exports.guestUploadCV = async (req, res) => {
   analysisStatus: "completed",
 });
 
+  const skill = await Skills.create({
+    candidateId:null,
+    skills:analysis.skillsDetected,
+  })
+
    return res.status(200).json({
   message: "Guest CV uploaded and analysed successfully",
   cv,
+  skill,
   extractedText: analysis.rawText,
   skillsDetected: analysis.skillsDetected,
 });

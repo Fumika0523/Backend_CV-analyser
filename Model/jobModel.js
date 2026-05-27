@@ -32,7 +32,7 @@ const jobSchema = new mongoose.Schema(
     salary: {
       type: String,
     },
-
+    //Online / Offline
     jobType: {
       type: String,
       enum: ["Full-time", "Part-time", "Contract", "Internship", "Remote"],
