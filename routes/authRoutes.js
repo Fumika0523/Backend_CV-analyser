@@ -14,9 +14,9 @@ const {
 } = require("../controllers/authController.js");
 
 // test route
-router.get("/test", (req, res) => {
-  res.send("User route working");
-});
+// router.get("/test", (req, res) => {
+//   res.send("User route working");
+// });
 
 // AUTH ROUTES
 router.post("/signup", signUp);

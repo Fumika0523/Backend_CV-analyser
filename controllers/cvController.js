@@ -72,13 +72,14 @@ exports.uploadCV = async (req, res) => {
 //guest upload and temporary stored the CV and when you signed up. it should link, it can be ID / temporary Id
 exports.guestUploadCV = async (req, res) => {
   //try {
+  //Get guestSessionId from frontend FormData
     const { guestSessionId } = req.body;
-
-    if (!guestSessionId) {
-      return res.status(400).json({
-        message: "Guest session ID is required",
-      });
-    }
+  
+    // if (!guestSessionId) {
+    //   return res.status(400).json({
+    //     message: "Guest session ID is required",
+    //   });
+    // }
 
     if (!req.file) {
       return res.status(400).json({
@@ -101,26 +102,35 @@ exports.guestUploadCV = async (req, res) => {
 
     // const extractedText = data.text;
 
-
     // console.log("--- Extracted Text ---");
     // console.log(extractedText);
 
     const analysis = await CVAnalyse(req.file.path);
 
-   const cv = await CV.create({
-  candidateId: null,
-  guestSessionId,
-  version: 1,
-  fileName: req.file.filename,
-  filePath: `/uploads/cvs/${req.file.filename}`,
-  rawText: analysis.rawText,
-  skillsDetected: analysis.skillsDetected,
-  analysisStatus: "completed",
-});
+    // CV collection should store only Latest guest CV.
+ const cv = await CV.findOneAndUpdate(
+  { guestSessionId },
+  {
+    $set: {
+      candidateId: null,
+      guestSessionId,
+      fileName: req.file.filename,
+      filePath: `/uploads/cvs/${req.file.filename}`,
+      rawText: analysis.rawText,
+      skillsDetected: analysis.skillsDetected || [],
+      uploadedAt: new Date(),
+    },
+  },
+  {
+    new: true,
+    upsert: true,
+  }
+);
 
-  const skill = await Skills.create({
-    candidateId:null,
-    skills:analysis.skillsDetected,
+  // Skill collection stores EVERY upload history.
+  const skill = await Skill.create({
+    candidateId: null,
+    skills: analysis.skillsDetected,
   })
 
    return res.status(200).json({
@@ -164,3 +174,6 @@ exports.getLatestCV = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+

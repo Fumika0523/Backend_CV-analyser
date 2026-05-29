@@ -7,26 +7,36 @@ exports.createJobPost = async (req, res) => {
       return res.status(403).json({ message: "Only companies can post jobs" });
     }
 
-    const {
-      title,
-      description,
-      requirements,
-      location,
-      salary,
-      jobType,
-      skills,
-    } = req.body;
+  const {
+  title,
+  jobType,
+  education,
+  experience,
+  keySkills,
+  location,
+  responsibilities,
+  roleSummary,
+  compensationBenefits,
+  description,
+  applicationEndDate,
+  salary,
+} = req.body;
 
-    const job = await Job.create({
-      companyId: req.user.id,
-      title,
-      description,
-      requirements,
-      location,
-      salary,
-      jobType,
-      skills,
-    });
+      const job = await Job.create({
+  companyId: req.user.id,
+  title,
+  jobType,
+  education,
+  experience,
+  keySkills,
+  location,
+  responsibilities,
+  roleSummary,
+  compensationBenefits,
+  description,
+  applicationEndDate,
+  salary,
+});
 
     res.status(201).json({
       message: "Job created successfully",

@@ -14,12 +14,23 @@ const jobSchema = new mongoose.Schema(
       trim: true,
     },
 
-    description: {
+    jobType: {
+      type: String,
+      enum: ["Full-time", "Part-time", "Contract", "Internship", "Remote"],
+      default: "Full-time",
+    },
+
+    education: {
       type: String,
       required: true,
     },
 
-    requirements: {
+    experience: {
+      type: String,
+      required: true,
+    },
+
+    keySkills: {
       type: [String],
       default: [],
     },
@@ -29,19 +40,34 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    salary: {
-      type: String,
-    },
-    //Online / Offline
-    jobType: {
-      type: String,
-      enum: ["Full-time", "Part-time", "Contract", "Internship", "Remote"],
-      default: "Full-time",
-    },
-
-    skills: {
+    responsibilities: {
       type: [String],
       default: [],
+    },
+
+    roleSummary: {
+      type: String,
+      required: true,
+    },
+
+    compensationBenefits: {
+      type: String,
+      required: true,
+    },
+
+    description: {
+      type: String,
+      required: false,
+    },
+
+    applicationEndDate: {
+      type: Date,
+      required: true,
+    },
+
+    salary: {
+      type: String,
+      required: true,
     },
 
     status: {
