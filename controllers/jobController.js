@@ -3,7 +3,8 @@ const Job = require("../Model/jobModel");
 // CREATE JOB POST - company only
 exports.createJobPost = async (req, res) => {
   try {
-    if (req.user.role !== "company") {
+    if (
+      req.user.role !== "company") {
       return res.status(403).json({ message: "Only companies can post jobs" });
     }
 
@@ -17,7 +18,7 @@ exports.createJobPost = async (req, res) => {
   responsibilities,
   roleSummary,
   compensationBenefits,
-  description,
+  requirements,
   applicationEndDate,
   salary,
 } = req.body;
@@ -33,7 +34,7 @@ exports.createJobPost = async (req, res) => {
   responsibilities,
   roleSummary,
   compensationBenefits,
-  description,
+  requirements,
   applicationEndDate,
   salary,
 });

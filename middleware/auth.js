@@ -11,7 +11,7 @@ const auth = async (req, res, next) => {
   try {
     const authHeader = req.header("Authorization");
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader) {
       return res.status(401).json({
         message: "No token, authorization denied",
       });
@@ -21,7 +21,7 @@ const auth = async (req, res, next) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET_KEY || "nodejs"
+      process.env.JWT_SECRET_KEY,
     );
 
     // Fetch user from DB
@@ -36,9 +36,9 @@ const auth = async (req, res, next) => {
     req.user = user; // attach user
     next();
   } catch (error) {
-    console.error(error);
+    console.error("AUTH ERROR:", error.message);
     res.status(401).json({
-      message: "Invalid token",
+      message: error.message,
     });
   }
 };

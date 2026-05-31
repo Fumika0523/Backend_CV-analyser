@@ -14,11 +14,17 @@ const jobSchema = new mongoose.Schema(
       trim: true,
     },
 
-    jobType: {
-      type: String,
-      enum: ["Full-time", "Part-time", "Contract", "Internship", "Remote"],
-      default: "Full-time",
-    },
+   jobType: {
+  type: String,
+  enum: ["Full-time", "Part-time", "Contract", "Internship"],
+  default: "Full-time",
+},
+
+workMode: {
+  type: String,
+  enum: ["Office", "Hybrid", "Remote"],
+  default: "Office",
+},
 
     education: {
       type: String,
@@ -31,6 +37,11 @@ const jobSchema = new mongoose.Schema(
     },
 
     keySkills: {
+      type: [String],
+      default: [],
+    },
+
+      requirements: {
       type: [String],
       default: [],
     },
@@ -55,10 +66,11 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    description: {
-      type: String,
-      required: false,
-    },
+    //CompanyDescription is stored in the User collection
+    // description: {
+    //   type: String,
+    //   required: false,
+    // },
 
     applicationEndDate: {
       type: Date,
