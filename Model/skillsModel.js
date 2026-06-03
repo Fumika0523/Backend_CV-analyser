@@ -3,12 +3,16 @@ const mongoose = require("mongoose")
 const skillSchema = new mongoose.Schema(
     {
         // After signup, you can link this to user's numeric candidateId
-        candidateId:{
-            type:mongoose.Schema.Types.ObjectId,
-            ref:"User",
-            required:false,
-            default:null,
-        },
+          candidateId: {
+      type: Number,
+      default: null,
+    },
+
+    userMongoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
         // Before signup, this connects skills to the guest browser session
         guestSessionId:{
             type:String,

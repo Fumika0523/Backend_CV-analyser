@@ -16,48 +16,77 @@ exports.uploadCV = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
+
     if (req.file.mimetype !== "application/pdf") {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
+
+    // MongoDB _id from JWT
     const mongoUserId = req.user.id;
+
     const user = await User.findById(mongoUserId);
+
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+
     if (user.role !== "candidate") {
       return res.status(403).json({
         message: "Only candidates can upload CV",
       });
     }
-    const candidateId = user.userId;
 
-    const cvCount = await CV.countDocuments({ candidateId });
+    // Numeric candidate Id
+    const candidateNumericId = user.userId;
+
+    const cvCount = await CV.countDocuments({
+      candidateId: candidateNumericId,
+    });
+
     const version = cvCount + 1;
 
     const uploadsDir = path.join(
       __dirname,
       "../uploads/cvs",
-      candidateId.toString()
+      candidateNumericId.toString()
     );
 
     await ensureDirExists(uploadsDir);
 
-    const newFileName = `${candidateId}_v${version}.pdf`;
+    const newFileName = `${candidateNumericId}_v${version}.pdf`;
     const newFilePath = path.join(uploadsDir, newFileName);
 
     await fs.rename(req.file.path, newFilePath);
 
     const analysis = await CVAnalyse(newFilePath);
-  
+
     const cv = await CV.create({
-  candidateId,
-  version,
-  fileName: newFileName,
-  filePath: `/uploads/cvs/${candidateId}/${newFileName}`,
-  rawText: analysis.rawText,
-  skillsDetected: analysis.skillsDetected,
-  analysisStatus: "completed",
-});
+      candidateId: candidateNumericId,
+      version,
+      fileName: newFileName,
+      filePath: `/uploads/cvs/${candidateNumericId}/${newFileName}`,
+      rawText: analysis.rawText,
+      skillsDetected: analysis.skillsDetected,
+      analysisStatus: "completed",
+    });
+
+   await Skill.findOneAndUpdate(
+  {
+    candidateId: candidateNumericId,
+  },
+  {
+    $set: {
+      candidateId: candidateNumericId,
+      userMongoId: mongoUserId,
+      guestSessionId: null,
+      skills: analysis.skillsDetected || [],
+    },
+  },
+  {
+    new: true,
+    upsert: true,
+  }
+);
 
     res.status(201).json({
       message: "CV uploaded successfully",
@@ -71,7 +100,7 @@ exports.uploadCV = async (req, res) => {
 
 //guest upload and temporary stored the CV and when you signed up. it should link, it can be ID / temporary Id
 exports.guestUploadCV = async (req, res) => {
-  //try {
+  try {
   //Get guestSessionId from frontend FormData
     const { guestSessionId } = req.body;
   
@@ -128,10 +157,20 @@ exports.guestUploadCV = async (req, res) => {
 );
 
   // Skill collection stores EVERY upload history.
-  const skill = await Skill.create({
-    candidateId: null,
-    skills: analysis.skillsDetected,
-  })
+const skill = await Skill.findOneAndUpdate(
+  { guestSessionId },
+  {
+    $set: {
+      candidateId: null,
+      guestSessionId,
+      skills: analysis.skillsDetected || [],
+    },
+  },
+  {
+    new: true,
+    upsert: true,
+  }
+);
 
    return res.status(200).json({
   message: "Guest CV uploaded and analysed successfully",
@@ -141,13 +180,13 @@ exports.guestUploadCV = async (req, res) => {
   skillsDetected: analysis.skillsDetected,
 });
 
-  // } catch (error) {
-  //   console.error("Guest upload CV error:", error);
+  } catch (error) {
+    console.error("Guest upload CV error:", error);
 
-  //   return res.status(500).json({
-  //     message: "Server error",
-  //   });
-  // }
+    return res.status(500).json({
+      message: "Server error",
+    });
+  }
 };
 
 exports.getLatestCV = async (req, res) => {
@@ -176,4 +215,4 @@ exports.getLatestCV = async (req, res) => {
 };
 
 
-
+//If you want to show candidate name later, numeric candidateId: 13 cannot use normal Mongoose populate() unless your User schema uses userId as the reference field.

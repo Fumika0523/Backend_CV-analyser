@@ -1,4 +1,8 @@
+const { Skills } = require("openai/resources.js");
 const Job = require("../Model/jobModel");
+const Skill = require('../Model/skillsModel')
+const User = require("../Model/UserModel");
+const CV = require("../Model/CVModel");
 
 // CREATE JOB POST - company only
 exports.createJobPost = async (req, res) => {
@@ -149,5 +153,86 @@ exports.deleteJobPost = async (req, res) => {
   } catch (error) {
     console.error("Delete job error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Find skills from Skill Collection
+exports.getMatchedJobs = async (req, res) => {
+  try {
+
+
+    const { jobId } = req.params;
+
+    const job = await Job.findById(jobId);
+    console.log("JOB SKILLS:", job.keySkills);
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
+
+    const jobSkills = job.keySkills || [];
+
+    const candidateSkills = await Skill.find({
+      candidateId: { $ne: null },
+    }
+  );
+
+    if (!candidateSkills || candidateSkills.length === 0) {
+      return res.status(404).json({
+        message: "No candidate skills found",
+      });
+    }
+
+    const results = [];
+
+for (const candidate of candidateSkills) {
+  console.log("CANDIDATE SKILLS:", candidate.skills);
+  if (typeof candidate.candidateId !== "number") {
+    console.log("Skipping invalid candidateId:", candidate.candidateId);
+    continue;
+  }     
+      const matchedSkills = jobSkills.filter((jobSkill) =>
+        candidate.skills.some(
+          (candidateSkill) =>
+            candidateSkill.toLowerCase().includes(jobSkill.toLowerCase()) ||
+            jobSkill.toLowerCase().includes(candidateSkill.toLowerCase())
+        )
+      );
+
+      const matchScore =
+        jobSkills.length > 0
+          ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+          : 0;
+
+      const user = await User.findOne({ userId: candidate.candidateId });
+
+      const cv = await CV.findOne({ candidateId: candidate.candidateId }).sort({
+        version: -1,
+      });
+
+      results.push({
+        candidateId: candidate.candidateId,
+        candidateName: user
+          ? `${user.firstName} ${user.lastName}`
+          : "Unknown Candidate",
+        email: user?.email,
+        matchedSkills,
+        totalJobSkills: jobSkills.length,
+        matchScore,
+        cvPath: cv?.filePath || null,
+      });
+    }
+
+    const sortedResults = results
+      .filter((candidate) => candidate.matchScore > 0)
+      .sort((a, b) => b.matchScore - a.matchScore);
+
+    return res.status(200).json({
+      jobTitle: job.title,
+      jobSkills,
+      matchedCandidates: sortedResults,
+    });
+  } catch (e) {
+    console.error("getMatchedJobs error:", e);
+    return res.status(500).json({ message: "Some internal error" });
   }
 };
