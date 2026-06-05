@@ -23,6 +23,7 @@ app.use( require("./routes/userRoutes"));
 app.use(require("./routes/authRoutes"));
 app.use( require("./routes/cvRoutes"));
 app.use( require("./routes/applicationRoutes"));
+app.use("/skills", require("./routes/skillsRoute"));
 app.use(require("./routes/jobRoutes"));
 app.use("/uploads", express.static("uploads"));
 app.listen(Port,()=>{

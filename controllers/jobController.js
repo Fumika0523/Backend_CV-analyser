@@ -189,7 +189,10 @@ exports.getMatchedJobs = async (req, res) => {
     }
 
     const jobSkills = job.keySkills || [];
-    const jobLocation = job.location?.toLowerCase().trim();
+  const jobLocation = `${job.location?.city || ""}, ${job.location?.country || ""}`
+  .toLowerCase()
+  .trim();
+
     const candidateSkills = await Skill.find({
       candidateId: { $ne: null },
     }
@@ -222,17 +225,19 @@ for (const candidate of candidateSkills) {
           ? Math.round((matchedSkills.length / jobSkills.length) * 100)
           : 0;
 
-      const user = await User.findOne({ userId: candidate.candidateId });
 
-      const candidateLocation = user?.location?.toLowerCase().trim();
-      console.log("USER LOCATION:", user?.location);
-console.log("TYPE:", typeof user?.location);
+const user = await User.findOne({ userId: candidate.candidateId });
 
-   const locationMatched =
-        candidateLocation &&
-        jobLocation &&
-        (candidateLocation.includes(jobLocation) ||
-          jobLocation.includes(candidateLocation));
+const jobCity = job.location?.city?.toLowerCase().trim();
+const candidateCity = user?.location?.city?.toLowerCase().trim();
+
+const locationMatched = jobCity === candidateCity;
+
+console.log("JOB CITY:", jobCity);
+console.log("CANDIDATE CITY:", candidateCity);
+console.log("LOCATION MATCHED:", locationMatched);
+console.log("MATCHED SKILLS:", matchedSkills);
+console.log("MATCH SCORE:", matchScore);
 
       if (matchScore === 0 || !locationMatched) {
         continue;
@@ -257,6 +262,8 @@ console.log("TYPE:", typeof user?.location);
 
     const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
 
+console.log("FINAL SORTED RESULTS:", sortedResults);
+
     return res.status(200).json({
       jobTitle: job.title,
       jobLocation: job.location,
@@ -269,5 +276,75 @@ console.log("TYPE:", typeof user?.location);
     return res.status(500).json({ 
       message: "Some internal error"
      });
+  }
+};
+
+exports.getMatchedJobsForCandidate = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user || user.role !== "candidate") {
+      return res.status(403).json({ message: "Only candidates can view matched jobs" });
+    }
+
+    const candidateSkillDoc = await Skill.findOne({
+      candidateId: user.userId,
+    });
+
+    if (!candidateSkillDoc) {
+      return res.status(404).json({ message: "No skills found for this candidate" });
+    }
+
+    const candidateSkills = candidateSkillDoc.skills || [];
+    const candidateCity = user.location?.city?.toLowerCase().trim();
+
+    const jobs = await Job.find({ status: "Open" });
+
+    const results = [];
+
+    for (const job of jobs) {
+      const jobSkills = job.keySkills || [];
+      const jobCity = job.location?.city?.toLowerCase().trim();
+
+      const locationMatched = candidateCity === jobCity;
+
+      const matchedSkills = jobSkills.filter((jobSkill) =>
+        candidateSkills.some(
+          (candidateSkill) =>
+            candidateSkill.toLowerCase().includes(jobSkill.toLowerCase()) ||
+            jobSkill.toLowerCase().includes(candidateSkill.toLowerCase())
+        )
+      );
+
+      const matchScore =
+        jobSkills.length > 0
+          ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+          : 0;
+
+      if (matchScore === 0 || !locationMatched) {
+        continue;
+      }
+
+      results.push({
+        jobId: job._id,
+        title: job.title,
+        companyUrl: job.companyUrl,
+        location: job.location,
+        salary: job.salary,
+        jobType: job.jobType,
+        workMode: job.workMode,
+        matchedSkills,
+        matchScore,
+      });
+    }
+
+    const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
+
+    res.status(200).json({
+      matchedJobs: sortedResults,
+    });
+  } catch (error) {
+    console.error("getMatchedJobsForCandidate error:", error);
+    res.status(500).json({ message: "Failed to fetch matched jobs" });
   }
 };

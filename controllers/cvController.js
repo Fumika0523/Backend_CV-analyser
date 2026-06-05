@@ -233,3 +233,27 @@ exports.getLatestCV = async (req, res) => {
 
 
 //If you want to show candidate name later, numeric candidateId: 13 cannot use normal Mongoose populate() unless your User schema uses userId as the reference field.
+
+
+exports.getMyCVs = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role !== "candidate") {
+      return res.status(403).json({ message: "Only candidates can view CVs" });
+    }
+
+    const cvs = await CV.find({ candidateId: user.userId }).sort({
+      version: -1,
+    });
+
+    res.status(200).json(cvs);
+  } catch (error) {
+    console.error("Get my CVs error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
