@@ -13,18 +13,22 @@ const jobSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    companyUrl: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    jobType: {
+      type: String,
+      enum: ["Full-time", "Part-time", "Contract", "Internship"],
+      default: "Full-time",
+    },
 
-   jobType: {
-  type: String,
-  enum: ["Full-time", "Part-time", "Contract", "Internship"],
-  default: "Full-time",
-},
-
-workMode: {
-  type: String,
-  enum: ["Office", "Hybrid", "Remote"],
-  default: "Office",
-},
+    workMode: {
+      type: String,
+      enum: ["Office", "Hybrid", "Remote"],
+      default: "Office",
+  },
 
     education: {
       type: String,
@@ -46,10 +50,10 @@ workMode: {
       default: [],
     },
 
-    location: {
-      type: String,
-      required: true,
-    },
+        location: {
+  city: { type: String, required: true },
+  country: { type: String, required: true },
+},
 
     responsibilities: {
       type: [String],

@@ -6,8 +6,14 @@ const { default: PdfParse } = require("pdf-parse-new");
 const CVAnalyse = require("../services/CVAnalyse")
 const Skill = require('../Model/skillsModel')
 
+
+// fs.mkdir() >> Make directory
+/// A helper function called ensureDirExists which uses fs.mkfir() with recursive: true. This guarantees the candidate's upload directory exists before moving the PDF file into it and prevents file-system error when a folder is missing.
 const ensureDirExists = async (dirPath) => {
-  await fs.mkdir(dirPath, { recursive: true });
+  await fs.mkdir(dirPath,
+    //Node creates everything automatically:
+     { recursive: true }
+    );
 };
 
 //signed in user
@@ -21,9 +27,10 @@ exports.uploadCV = async (req, res) => {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
 
-    // MongoDB _id from JWT
+    // MongoDB _id from JWT , eg) "665fabc123..."
     const mongoUserId = req.user.id;
 
+    // find User from user collection 
     const user = await User.findById(mongoUserId);
 
     if (!user) {
@@ -39,25 +46,35 @@ exports.uploadCV = async (req, res) => {
     // Numeric candidate Id
     const candidateNumericId = user.userId;
 
+    // Count how many CVs this candidate already has
     const cvCount = await CV.countDocuments({
       candidateId: candidateNumericId,
     });
 
+    //create next CV version
     const version = cvCount + 1;
 
+    // e.g) Backend/uploads/cvs/14
     const uploadsDir = path.join(
       __dirname,
       "../uploads/cvs",
       candidateNumericId.toString()
     );
 
+    // Make sure the folder exists
     await ensureDirExists(uploadsDir);
 
+    // create new PDF file name
     const newFileName = `${candidateNumericId}_v${version}.pdf`;
+
+    // create full file path
+    // e.g) uploadsDir = Backend/uploads/cvs/14
+    // newFileName = 14_v3.pdf
+    // result: Backend/uploads/cvs/14/14_v3.pdf
     const newFilePath = path.join(uploadsDir, newFileName);
-
+    // Move uploaded PDF from temporary place to the candidate’s own CV folder.
     await fs.rename(req.file.path, newFilePath);
-
+    //Analyse the saved PDF
     const analysis = await CVAnalyse(newFilePath);
 
     const cv = await CV.create({
@@ -104,11 +121,11 @@ exports.guestUploadCV = async (req, res) => {
   //Get guestSessionId from frontend FormData
     const { guestSessionId } = req.body;
   
-    // if (!guestSessionId) {
-    //   return res.status(400).json({
-    //     message: "Guest session ID is required",
-    //   });
-    // }
+    if (!guestSessionId) {
+      return res.status(400).json({
+        message: "Guest session ID is required",
+      });
+    }
 
     if (!req.file) {
       return res.status(400).json({

@@ -11,9 +11,11 @@ const auth = require("../middleware/auth");
 router.post("/create", auth, createJobPost);
 router.get("/all-jobs", getAllJobPosts);
 router.get("/my-jobs", auth, getMyCompanyJobPosts);
+
+router.put("/jobs/:id", auth, updateJobPost);
+router.delete("/jobs/:id", auth, deleteJobPost);
+router.get("/jobs/:jobId/matches", getMatchedJobs);
+
 router.get("/:id", getSingleJobPost);
-router.put("/:id", auth, updateJobPost);
-router.delete("/:id", auth, deleteJobPost);
-router.get('/jobs/:jobId/matches', getMatchedJobs)
 
 module.exports = router;

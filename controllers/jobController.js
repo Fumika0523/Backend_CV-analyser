@@ -19,6 +19,7 @@ exports.createJobPost = async (req, res) => {
   experience,
   keySkills,
   location,
+  companyUrl,
   responsibilities,
   roleSummary,
   compensationBenefits,
@@ -36,6 +37,7 @@ exports.createJobPost = async (req, res) => {
   keySkills,
   location,
   responsibilities,
+  companyUrl,
   roleSummary,
   compensationBenefits,
   requirements,
@@ -52,6 +54,7 @@ exports.createJobPost = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // GET ALL JOBS
 exports.getAllJobPosts = async (req, res) => {
@@ -106,7 +109,7 @@ exports.getSingleJobPost = async (req, res) => {
 
 // UPDATE JOB
 exports.updateJobPost = async (req, res) => {
-  try {
+  // try {
     const job = await Job.findById(req.params.id);
 
     if (!job) {
@@ -117,19 +120,37 @@ exports.updateJobPost = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const updateData = { ...req.body };
+
+    if (typeof updateData.location === "string") {
+      const [city, country] = updateData.location.split(",").map((item) => item.trim());
+
+      updateData.location = {
+        city: city || "",
+        country: country || "",
+      };
+    }
+
+    const updatedJob = await Job.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     res.status(200).json({
       message: "Job updated successfully",
       job: updatedJob,
     });
-  } catch (error) {
-    console.error("Update job error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
+  // } catch (error) {
+  //   console.error("Update job error:", error);
+
+  //   res.status(500).json({
+  //     message: error.message || "Server error",
+  //   });
+  // }
 };
 
 // DELETE JOB
@@ -159,8 +180,6 @@ exports.deleteJobPost = async (req, res) => {
 // Find skills from Skill Collection
 exports.getMatchedJobs = async (req, res) => {
   try {
-
-
     const { jobId } = req.params;
 
     const job = await Job.findById(jobId);
@@ -170,7 +189,7 @@ exports.getMatchedJobs = async (req, res) => {
     }
 
     const jobSkills = job.keySkills || [];
-
+    const jobLocation = job.location?.toLowerCase().trim();
     const candidateSkills = await Skill.find({
       candidateId: { $ne: null },
     }
@@ -205,6 +224,20 @@ for (const candidate of candidateSkills) {
 
       const user = await User.findOne({ userId: candidate.candidateId });
 
+      const candidateLocation = user?.location?.toLowerCase().trim();
+      console.log("USER LOCATION:", user?.location);
+console.log("TYPE:", typeof user?.location);
+
+   const locationMatched =
+        candidateLocation &&
+        jobLocation &&
+        (candidateLocation.includes(jobLocation) ||
+          jobLocation.includes(candidateLocation));
+
+      if (matchScore === 0 || !locationMatched) {
+        continue;
+      }
+
       const cv = await CV.findOne({ candidateId: candidate.candidateId }).sort({
         version: -1,
       });
@@ -222,17 +255,19 @@ for (const candidate of candidateSkills) {
       });
     }
 
-    const sortedResults = results
-      .filter((candidate) => candidate.matchScore > 0)
-      .sort((a, b) => b.matchScore - a.matchScore);
+    const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
 
     return res.status(200).json({
       jobTitle: job.title,
+      jobLocation: job.location,
       jobSkills,
       matchedCandidates: sortedResults,
     });
+
   } catch (e) {
     console.error("getMatchedJobs error:", e);
-    return res.status(500).json({ message: "Some internal error" });
+    return res.status(500).json({ 
+      message: "Some internal error"
+     });
   }
 };

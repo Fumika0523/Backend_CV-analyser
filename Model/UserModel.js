@@ -34,12 +34,10 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: false,
     },
+    
     location: {
   city: { type: String, required: true },
   country: { type: String, required: true },
-  //status update by ourside - admin system
-//   status:{ type: String, 
-//     required: true , default:"Not Applied"},
 },
     role:{
         type:String,
