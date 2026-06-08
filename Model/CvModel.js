@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const CvSchema = new mongoose.Schema(
   {
+    cvId:{
+       type: mongoose.Schema.Types.ObjectId,
+       required:true,
+    },
+
     candidateId: {
       type: Number,
       required: false,

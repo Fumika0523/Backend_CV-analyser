@@ -28,7 +28,7 @@ const applyForJob = async (req, res) => {
 
     // Create application
     const application = await Application.create({
-      userId: req.user.id,
+      candidateId: req.user.id,
       jobId,
       jobTitle,
       company,

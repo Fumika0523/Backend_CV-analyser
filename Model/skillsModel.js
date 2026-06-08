@@ -3,7 +3,7 @@ const mongoose = require("mongoose")
 const skillSchema = new mongoose.Schema(
     {
         // After signup, you can link this to user's numeric candidateId
-          candidateId: {
+    candidateId: {
       type: Number,
       default: null,
     },
@@ -23,6 +23,11 @@ const skillSchema = new mongoose.Schema(
         skills:{
             type:[String],
             default:[],
+        },
+        location:{
+            type:String,
+            required:false,
+            default:null,
         }
     }
 )

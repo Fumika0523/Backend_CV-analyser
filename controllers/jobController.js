@@ -177,9 +177,9 @@ exports.deleteJobPost = async (req, res) => {
   }
 };
 
-// Find skills from Skill Collection
-exports.getMatchedJobs = async (req, res) => {
-  try {
+// Find skills from Skill Collectio
+exports.getMatchedJobsForCompany = async (req, res) => {
+ // try {
     const { jobId } = req.params;
 
     const job = await Job.findById(jobId);
@@ -271,12 +271,12 @@ console.log("FINAL SORTED RESULTS:", sortedResults);
       matchedCandidates: sortedResults,
     });
 
-  } catch (e) {
-    console.error("getMatchedJobs error:", e);
-    return res.status(500).json({ 
-      message: "Some internal error"
-     });
-  }
+  // } catch (e) {
+  //   console.error("getMatchedJobs error:", e);
+  //   return res.status(500).json({ 
+  //     message: "Some internal error"
+  //    });
+  // }
 };
 
 exports.getMatchedJobsForCandidate = async (req, res) => {
@@ -325,6 +325,10 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         continue;
       }
 
+      if(matchScore <= 50){
+        continue
+      }
+
       results.push({
         jobId: job._id,
         title: job.title,
@@ -346,5 +350,84 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
   } catch (error) {
     console.error("getMatchedJobsForCandidate error:", error);
     res.status(500).json({ message: "Failed to fetch matched jobs" });
+  }
+};
+
+exports.getMatchedJobsForGuest = async (req, res) => {
+  try {
+    // get guestSessionId from URL
+    const { guestSessionId } = req.query;
+
+    if (!guestSessionId) {
+      return res.status(400).json({
+        message: "Guest session ID is required",
+      });
+    }
+
+    // Go to SKill collection and Find Skills saved for this guest
+    const guestSkill = await Skill.findOne({ guestSessionId });
+
+    if (!guestSkill) {
+      return res.status(404).json({
+        message: "No skills found for this guest",
+      });
+    }
+
+    const guestSkills = guestSkill.skills || [];
+    const jobs = await Job.find({ status: "Open" });
+
+    const results = [];
+
+    // Check every open job one by one
+    for (const job of jobs) {
+      const jobSkills = job.keySkills || [];
+
+    // for each job skill, check if guest CV has a similar skill
+      const matchedSkills = jobSkills.filter((jobSkill) =>
+        //"Check all guest skills.
+        // For each job skill, check weather at least one skill form the guest's CV
+        // is similar or contains the same wording.
+        // The .some() method returns true as soon as it finds one matching skill
+        // If a match is found, this job skill is added to the matchedSkills array
+        guestSkills.some(
+          (guestSkill) =>
+            guestSkill.toLowerCase().includes(jobSkill.toLowerCase()) ||
+            jobSkill.toLowerCase().includes(guestSkill.toLowerCase())
+        )
+      );
+
+      const matchScore =
+        jobSkills.length > 0
+          ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+          : 0;
+
+      if (matchScore === 0) continue;
+      if (matchScore <= 50) continue;
+
+      results.push({
+        jobId: job._id,
+        title: job.title,
+        companyUrl: job.companyUrl,
+        location: job.location,
+        salary: job.salary,
+        jobType: job.jobType,
+        workMode: job.workMode,
+        matchedSkills,
+        matchScore,
+      });
+    }
+
+    // array methods - .sort()
+    // a and b are two elements from the array that JavaScript passes into the sort callback for comparison. THe callback returns a positive, negative, or zero value to tell JavaScript which item should come first
+    const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
+
+    return res.status(200).json({
+      matchedJobs: sortedResults.slice(0, 5),
+    });
+  } catch (error) {
+    console.error("getMatchedJobsForGuest error:", error);
+    return res.status(500).json({
+      message: "Failed to fetch guest matched jobs",
+    });
   }
 };

@@ -6,31 +6,39 @@ const applicationSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
+
   jobId: {
     type: mongoose.Schema.Types.ObjectId,
     required: true,
+    ref:"Job"
   },
+
   jobTitle: {
     type: String,
     required: true,
   },
+
   company: {
     type: String,
     required: true,
   },
+
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
+
   status: {
     type: String,
     enum: ["notapplied" , "pending", "review", "interview", "rejected", "accepted"],
     default: "pending",
   },
+
   appliedDate: {
     type: Date,
     default: Date.now,
   },
+  
   cvId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "CV",

@@ -4,7 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const { uploadCV, getLatestCV ,gueustUploadCV, guestUploadCV, getMyCVs} = require("../controllers/cvController");
+const { uploadCV, getLatestCV , guestUploadCV, getMyCVs} = require("../controllers/cvController");
 const auth = require("../middleware/auth");
 
 const storage = multer.diskStorage({

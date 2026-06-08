@@ -19,6 +19,12 @@ const ensureDirExists = async (dirPath) => {
 //signed in user
 exports.uploadCV = async (req, res) => {
   try {
+    console.log("=== Upload Started ===");
+    console.log("req.file:", req.file);
+    console.log("req.body:", req.body);
+    console.log("req.user:", req.user);
+
+    // existing code...
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
@@ -26,6 +32,12 @@ exports.uploadCV = async (req, res) => {
     if (req.file.mimetype !== "application/pdf") {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
+
+      if (!guestSessionId || guestSessionId === 'null' || guestSessionId === 'undefined') {
+return res.status(400).json({
+message: "A valid Guest session ID is required for guest uploads",
+});
+}
 
     // MongoDB _id from JWT , eg) "665fabc123..."
     const mongoUserId = req.user.id;
@@ -96,6 +108,7 @@ exports.uploadCV = async (req, res) => {
       candidateId: candidateNumericId,
       userMongoId: mongoUserId,
       guestSessionId: null,
+   
       skills: analysis.skillsDetected || [],
     },
   },
@@ -167,13 +180,13 @@ exports.guestUploadCV = async (req, res) => {
       uploadedAt: new Date(),
     },
   },
-  {
-    new: true,
-    upsert: true,
-  }
+ {
+  returnDocument: "after",
+  upsert: true,
+}
 );
 
-  // Skill collection stores EVERY upload history.
+// Skill collection stores latest guest skills for matching.
 const skill = await Skill.findOneAndUpdate(
   { guestSessionId },
   {
@@ -183,10 +196,10 @@ const skill = await Skill.findOneAndUpdate(
       skills: analysis.skillsDetected || [],
     },
   },
-  {
-    new: true,
-    upsert: true,
-  }
+ {
+  returnDocument: "after",
+  upsert: true,
+}
 );
 
    return res.status(200).json({
@@ -233,7 +246,6 @@ exports.getLatestCV = async (req, res) => {
 
 
 //If you want to show candidate name later, numeric candidateId: 13 cannot use normal Mongoose populate() unless your User schema uses userId as the reference field.
-
 
 exports.getMyCVs = async (req, res) => {
   try {
