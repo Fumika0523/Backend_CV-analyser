@@ -55,13 +55,12 @@ exports.createJobPost = async (req, res) => {
   }
 };
 
-
 // GET ALL JOBS
 exports.getAllJobPosts = async (req, res) => {
   try {
     const jobs = await Job.find()
       .populate("companyId", "firstName lastName companyName email city country")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean();
 
     res.status(200).json(jobs);
   } catch (error) {
@@ -79,7 +78,7 @@ exports.getMyCompanyJobPosts = async (req, res) => {
 
     const jobs = await Job.find({ companyId: req.user.id }).sort({
       createdAt: -1,
-    });
+    }).lean()
 
     res.status(200).json(jobs);
   } catch (error) {
@@ -298,7 +297,7 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     const candidateSkills = candidateSkillDoc.skills || [];
     const candidateCity = user.location?.city?.toLowerCase().trim();
 
-    const jobs = await Job.find({ status: "Open" });
+    const jobs = await Job.find({ status: "Open" }).lean();
 
     const results = [];
 
@@ -374,7 +373,10 @@ exports.getMatchedJobsForGuest = async (req, res) => {
     }
 
     const guestSkills = guestSkill.skills || [];
-    const jobs = await Job.find({ status: "Open" });
+
+
+    //mongoose methods that tells mongodb - give me plain javascript obj. no need full mongoose doc.
+    const jobs = await Job.find({ status: "Open" }).lean();
 
     const results = [];
 
@@ -403,27 +405,37 @@ exports.getMatchedJobsForGuest = async (req, res) => {
 
       if (matchScore === 0) continue;
       if (matchScore <= 50) continue;
+console.log("JOB OBJECT:", job);
 
-      results.push({
-        jobId: job._id,
-        title: job.title,
-        companyUrl: job.companyUrl,
-        location: job.location,
-        salary: job.salary,
-        jobType: job.jobType,
-        workMode: job.workMode,
-        matchedSkills,
-        matchScore,
-      });
+
+console.log("JOB TITLE:", job.title);
+
+results.push({
+  jobId: job._id,
+  title: job.title,
+  companyUrl: job.companyUrl,
+  location: job.location,
+  salary: job.salary,
+  jobType: job.jobType,
+  workMode: job.workMode,
+  matchedSkills,
+  matchScore,
+});
     }
 
     // array methods - .sort()
     // a and b are two elements from the array that JavaScript passes into the sort callback for comparison. THe callback returns a positive, negative, or zero value to tell JavaScript which item should come first
     const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
 
+    console.log(
+  "MATCHED JOBS RESPONSE:",
+  JSON.stringify(sortedResults, null, 2)
+);
+
     return res.status(200).json({
       matchedJobs: sortedResults.slice(0, 5),
     });
+      
   } catch (error) {
     console.error("getMatchedJobsForGuest error:", error);
     return res.status(500).json({
