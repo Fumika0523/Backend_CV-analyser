@@ -59,8 +59,12 @@ exports.createJobPost = async (req, res) => {
 exports.getAllJobPosts = async (req, res) => {
   try {
     const jobs = await Job.find()
-      .populate("companyId", "firstName lastName companyName email city country")
-      .sort({ createdAt: -1 }).lean();
+      .populate(
+        "companyId",
+        "firstName lastName companyName email city country"
+      )
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.status(200).json(jobs);
   } catch (error) {
@@ -264,7 +268,7 @@ console.log("MATCH SCORE:", matchScore);
 console.log("FINAL SORTED RESULTS:", sortedResults);
 
     return res.status(200).json({
-      jobTitle: job.title,
+title: job.title,
       jobLocation: job.location,
       jobSkills,
       matchedCandidates: sortedResults,

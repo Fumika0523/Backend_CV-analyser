@@ -13,7 +13,7 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    jobTitle: {
+    title: {
       type: String,
       required: true,
       trim: true,

@@ -1,48 +1,51 @@
 const mongoose = require("mongoose");
  
-const applicationSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
+const applicationSchema = new mongoose.Schema(
+  {
+    //Mongoose ref normally works with MongoDB _id ObjectId.
+    candidateId: {
+      type: Number,
+      required: true,
+    },
 
-  jobId: {
-    type: mongoose.Schema.Types.ObjectId,
-    required: true,
-    ref:"Job"
-  },
+    companyId: {
+      type: Number,
+      required: true,
+    },
 
-  jobTitle: {
-    type: String,
-    required: true,
-  },
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+    },
 
-  company: {
-    type: String,
-    required: true,
-  },
+    cvId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CV",
+    },
 
-  companyId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
+    title: {
+      type: String,
+      required: true,
+    },
 
-  status: {
-    type: String,
-    enum: ["notapplied" , "pending", "review", "interview", "rejected", "accepted"],
-    default: "pending",
-  },
+    companyName: {
+      type: String,
+      required: true,
+    },
 
-  appliedDate: {
-    type: Date,
-    default: Date.now,
+    status: {
+      type: String,
+      enum: ["pending", "review", "interview", "rejected", "accepted"],
+      default: "pending",
+    },
+
+    appliedDate: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  
-  cvId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "CV",
-  },
-});
+  { timestamps: true }
+);
  
 module.exports = mongoose.model("Application", applicationSchema);

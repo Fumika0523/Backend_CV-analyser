@@ -1,10 +1,12 @@
 const jwt = require("jsonwebtoken");
 const User = require("../Model/UserModel");
 const bcrypt = require("bcryptjs");
-const sendOTPEmail = require("../utils/sendOTPEmail")
+const sendEmail = require("../utils/sendEmail")
 const getNextSequence = require("../utils/getNextSequence");
 const CV = require("../Model/CVModel");
-
+const {
+  otpEmailTemplate,
+} = require("../utils/emailTemplates");
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -92,7 +94,11 @@ if (role === "candidate" && req.body.guestSessionId) {
 
     user = await User.create(userData);
 
-    await sendOTPEmail(email, otp);
+    await sendEmail({
+  to: email,
+  subject: "Your SkillfulJobs.ai verification code",
+  html: otpEmailTemplate(otp),
+});
 
     return res.status(201).json({
       success: true,
@@ -190,7 +196,11 @@ exports.resendOtp = async (req, res) => {
     user.otpExpiry = Date.now() + 5 * 60 * 1000;
 
     await user.save();
-    await sendOTPEmail(user.email, otp);
+    await sendEmail({
+  to: user.email,
+  subject: "Your SkillfulJobs.ai verification code",
+  html: otpEmailTemplate(otp),
+});
 
     return res.status(200).json({
       message: "A new OTP has been sent.",
@@ -224,7 +234,7 @@ exports.signIn = async (req, res) => {
       user.otpExpiry = Date.now() + 5* 60*1000
 
       await user.save()
-      await sendOTPEmail(user.email, otp)
+      await sendEmail(user.email, otp)
 
       return res.status(403).json({
         success:false,
@@ -272,7 +282,7 @@ exports.forgotPassword = async (req, res) => {
     user.otpExpiry = Date.now() + 5 * 60 * 1000;
 
     await user.save();
-    await sendOTPEmail(user.email, otp);
+    await sendEmail(user.email, otp);
 
     return res.status(200).json({
       success: true,

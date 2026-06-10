@@ -1,23 +1,45 @@
 const Application = require("../Model/applicationModel");
+const User = require("../Model/UserModel");
+const Job = require("../Model/jobModel")
+const sendEmail = require("../utils/sendEmail");
+
+const {
+  candidateApplicationTemplate,
+  companyApplicationTemplate,
+} = require("../utils/emailTemplates");
 
 // ===============================
 // APPLY FOR JOB
 // ===============================
+
 const applyForJob = async (req, res) => {
   try {
-    const {
-      jobId,
-      jobTitle,
-      company,
-      companyId,
-      cvId,
-    } = req.body;
+    const { jobId, cvId } = req.body;
 
-    // Check if already applied
+    const user = await User.findById(req.user.id).lean();
+
+    if (!user || user.role !== "candidate") {
+      return res.status(403).json({
+        success: false,
+        message: "Only candidates can apply for jobs",
+      });
+    }
+
+    const job = await Job.findById(jobId)
+  .populate("companyId", "userId companyName email firstName lastName")
+  .lean();
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
     const alreadyApplied = await Application.findOne({
-      userId: req.user.id,
+      candidateId: user.userId,
       jobId,
-    });
+    }).lean();
 
     if (alreadyApplied) {
       return res.status(400).json({
@@ -26,16 +48,40 @@ const applyForJob = async (req, res) => {
       });
     }
 
-    // Create application
-    const application = await Application.create({
-      candidateId: req.user.id,
-      jobId,
-      jobTitle,
-      company,
-      companyId,
-      cvId,
-      status: "pending",
-    });
+console.log("REQ BODY:", req.body);
+console.log("JOB FROM DB:", job);
+console.log("JOB TITLE VALUE:", job.jobTitle || job.title);
+console.log("COMPANY VALUE:", job.companyId);
+
+  const application = await Application.create({
+  candidateId: user.userId,
+  companyId: job.companyId.userId,
+  jobId: job._id,
+  title: job.title,
+  companyName: job.companyId.companyName || "Company",
+  cvId,
+  status: "pending",
+});
+
+const candidateHtml =
+  candidateApplicationTemplate(user, job);
+
+const companyHtml =
+  companyApplicationTemplate(user, job);
+
+// Email to candidate
+await sendEmail({
+  to: user.email,
+  subject: "Application submitted successfully",
+  html:candidateHtml,
+})
+
+// Email  to company
+await sendEmail({
+   to: job.companyId.email,
+  subject: "New job application received",
+  html: companyHtml,
+})
 
     res.status(201).json({
       success: true,
@@ -57,20 +103,31 @@ const applyForJob = async (req, res) => {
 // ===============================
 const getApplications = async (req, res) => {
   try {
-    let applications;
+    const user = await User.findById(req.user.id).lean();
 
-    // Candidate → get own applications
-    if (req.user.role === "candidate") {
-      applications = await Application.find({
-        userId: req.user.id,
-      }).sort({ appliedDate: -1 });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
-    // Company → get applications for their jobs
-    if (req.user.role === "company") {
+    let applications = [];
+
+    if (user.role === "candidate") {
       applications = await Application.find({
-        companyId: req.user.id,
-      }).sort({ appliedDate: -1 });
+        candidateId: user.userId,
+      })
+        .sort({ appliedDate: -1 })
+        .lean();
+    }
+
+    if (user.role === "company") {
+      applications = await Application.find({
+        companyId: user.userId,
+      })
+        .sort({ appliedDate: -1 })
+        .lean();
     }
 
     res.status(200).json({
@@ -104,10 +161,14 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
-    // Only company owner can update
-    if (
-      application.companyId.toString() !== req.user.id
-    ) {
+    const user = await User.findById(req.user.id);
+
+if (application.companyId !== user.userId) {
+  return res.status(403).json({
+    success: false,
+    message: "Unauthorized",
+  });
+} {
       return res.status(403).json({
         success: false,
         message: "Unauthorized",

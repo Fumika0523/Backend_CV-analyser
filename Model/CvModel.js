@@ -6,7 +6,7 @@ const CvSchema = new mongoose.Schema(
        type: mongoose.Schema.Types.ObjectId,
        required:true,
     },
-
+    // same as userId
     candidateId: {
       type: Number,
       required: false,
