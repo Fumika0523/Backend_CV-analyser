@@ -282,7 +282,11 @@ exports.forgotPassword = async (req, res) => {
     user.otpExpiry = Date.now() + 5 * 60 * 1000;
 
     await user.save();
-    await sendEmail(user.email, otp);
+    await sendEmail({
+  to: user.email,
+  subject: "Your SkillfulJobs.ai verification code",
+  html: otpEmailTemplate(otp),
+});
 
     return res.status(200).json({
       success: true,

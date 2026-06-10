@@ -128,6 +128,22 @@ const getApplications = async (req, res) => {
       })
         .sort({ appliedDate: -1 })
         .lean();
+
+      applications = await Promise.all(
+        applications.map(async (app) => {
+          const candidate = await User.findOne({
+            userId: app.candidateId,
+          }).lean();
+
+          return {
+            ...app,
+            candidateName: candidate
+              ? `${candidate.firstName} ${candidate.lastName}`
+              : `Candidate ${app.candidateId}`,
+            candidateEmail: candidate?.email || "",
+          };
+        })
+      );
     }
 
     res.status(200).json({
@@ -152,6 +168,21 @@ const updateApplicationStatus = async (req, res) => {
   try {
     const { status } = req.body;
 
+    const allowedStatuses = [
+      "pending",
+      "review",
+      "interview",
+      "rejected",
+      "accepted",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+      });
+    }
+
     const application = await Application.findById(req.params.id);
 
     if (!application) {
@@ -163,12 +194,14 @@ const updateApplicationStatus = async (req, res) => {
 
     const user = await User.findById(req.user.id);
 
-if (application.companyId !== user.userId) {
-  return res.status(403).json({
-    success: false,
-    message: "Unauthorized",
-  });
-} {
+    if (!user || user.role !== "company") {
+      return res.status(403).json({
+        success: false,
+        message: "Only companies can update application status",
+      });
+    }
+
+    if (application.companyId !== user.userId) {
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
@@ -176,7 +209,6 @@ if (application.companyId !== user.userId) {
     }
 
     application.status = status;
-
     await application.save();
 
     res.status(200).json({

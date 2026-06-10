@@ -7,43 +7,55 @@ const CV = require("../Model/CVModel");
 // CREATE JOB POST - company only
 exports.createJobPost = async (req, res) => {
   try {
-    if (
-      req.user.role !== "company") {
+    if (req.user.role !== "company") {
       return res.status(403).json({ message: "Only companies can post jobs" });
     }
 
-  const {
-  title,
-  jobType,
-  education,
-  experience,
-  keySkills,
-  location,
-  companyUrl,
-  responsibilities,
-  roleSummary,
-  compensationBenefits,
-  requirements,
-  applicationEndDate,
-  salary,
-} = req.body;
+    const {
+      title,
+      jobType,
+      workMode,
+      education,
+      experience,
+      keySkills,
+      location,
+      companyUrl,
+      responsibilities,
+      roleSummary,
+      compensationBenefits,
+      requirements,
+      applicationEndDate,
+      salary,
+    } = req.body;
 
-      const job = await Job.create({
-  companyId: req.user.id,
-  title,
-  jobType,
-  education,
-  experience,
-  keySkills,
-  location,
-  responsibilities,
-  companyUrl,
-  roleSummary,
-  compensationBenefits,
-  requirements,
-  applicationEndDate,
-  salary,
-});
+    let formattedLocation = location;
+
+    if (typeof location === "string") {
+      const [city, country] = location.split(",").map((item) => item.trim());
+
+      formattedLocation = {
+        city: city || "",
+        country: country || "",
+      };
+    }
+
+    const job = await Job.create({
+      companyId: req.user.id,
+      title,
+      jobType,
+      workMode,
+      education,
+      experience,
+      keySkills,
+      location: formattedLocation,
+      responsibilities,
+      companyUrl,
+      roleSummary,
+      compensationBenefits,
+      requirements,
+      applicationEndDate,
+      salary,
+    });
 
     res.status(201).json({
       message: "Job created successfully",
@@ -51,7 +63,7 @@ exports.createJobPost = async (req, res) => {
     });
   } catch (error) {
     console.error("Create job error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: error.message || "Server error" });
   }
 };
 

@@ -36,7 +36,7 @@ const applicationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "review", "interview", "rejected", "accepted"],
+      enum: ["pending", "reviewing", "interview", "rejected", "accepted"],
       default: "pending",
     },
 
@@ -44,6 +44,32 @@ const applicationSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    matchScore: {
+  type: Number,
+  default: 0,
+},
+
+matchedSkills: {
+  type: [String],
+  default: [],
+},
+
+missingSkills: {
+  type: [String],
+  default: [],
+},
+
+locationMatch: {
+  type: Boolean,
+  default: false,
+},
+
+note: {
+  type: String,
+  default: "",
+},
+
   },
   { timestamps: true }
 );
