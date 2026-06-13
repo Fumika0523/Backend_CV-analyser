@@ -33,11 +33,6 @@ exports.uploadCV = async (req, res) => {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
 
-      if (!guestSessionId || guestSessionId === 'null' || guestSessionId === 'undefined') {
-return res.status(400).json({
-message: "A valid Guest session ID is required for guest uploads",
-});
-}
 
     // MongoDB _id from JWT , eg) "665fabc123..."
     const mongoUserId = req.user.id;
@@ -108,8 +103,9 @@ message: "A valid Guest session ID is required for guest uploads",
       candidateId: candidateNumericId,
       userMongoId: mongoUserId,
       guestSessionId: null,
-   
       skills: analysis.skillsDetected || [],
+      education: analysis.education || [],
+      qualifications: analysis.qualifications || [],
     },
   },
   {

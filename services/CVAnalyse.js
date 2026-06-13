@@ -15,10 +15,15 @@ const CVAnalyse = async (filePath) => {
 
   const resumeText = pdfData.text;
 
-  const prompt = `
+const prompt = `
 Analyze the following resume text.
-Extract all professional skills, technical proficiencies, tools, frameworks, and soft skills.
-Return them as a clean list.
+
+Extract:
+1. Professional skills, technical skills, tools, frameworks, and soft skills
+2. Education history
+3. Qualifications / certificates
+
+Return JSON only.
 
 Resume Text:
 ${resumeText}
@@ -30,24 +35,34 @@ ${resumeText}
     config: {
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          skillsDetected: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-        },
-        required: ["skillsDetected"],
-      },
+  type: Type.OBJECT,
+  properties: {
+    skillsDetected: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    education: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    qualifications: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+  },
+  required: ["skillsDetected", "education", "qualifications"],
+},
     },
   });
 
   const result = JSON.parse(response.text);
 
   return {
-    rawText: resumeText,
-    skillsDetected: result.skillsDetected || [],
-  };
+  rawText: resumeText,
+  skillsDetected: result.skillsDetected || [],
+  education: result.education || [],
+  qualifications: result.qualifications || [],
+};
 };
 
 module.exports = CVAnalyse;

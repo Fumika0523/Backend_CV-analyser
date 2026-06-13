@@ -28,7 +28,16 @@ const skillSchema = new mongoose.Schema(
             type:String,
             required:false,
             default:null,
-        }
+        },
+        education: {
+  type: [String],
+  default: [],
+},
+
+qualifications: {
+  type: [String],
+  default: [],
+},
     }
 )
 

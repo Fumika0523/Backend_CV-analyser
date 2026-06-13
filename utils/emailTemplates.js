@@ -16,11 +16,11 @@ const logoHtml = `
 
 const emailWrapper = (title, content) => `
   <div style="background:#EFF6FF;padding:40px;font-family:Arial,sans-serif;">
-    <div style="max-width:600px;margin:auto;background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(37,99,235,0.15);">
+    <div style="max-width:600px;margin:auto;background:#FFFFFF;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(29, 78, 183, 0.78);">
 
       <div style="background:linear-gradient(135deg,#2563EB,#60A5FA);padding:30px;text-align:center;">
         ${logoHtml}
-        <p style="color:#DBEAFE;margin-top:10px;margin-bottom:0;">
+        <p style="color: color:#FFFFFF;;margin-top:10px;margin-bottom:0;">
           ${title}
         </p>
       </div>

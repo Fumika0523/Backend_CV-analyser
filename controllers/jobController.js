@@ -240,7 +240,6 @@ for (const candidate of candidateSkills) {
           ? Math.round((matchedSkills.length / jobSkills.length) * 100)
           : 0;
 
-
 const user = await User.findOne({ userId: candidate.candidateId });
 
 const jobCity = job.location?.city?.toLowerCase().trim();
