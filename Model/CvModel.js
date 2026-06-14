@@ -39,7 +39,7 @@ const CvSchema = new mongoose.Schema(
       default: "",
     },
 
-    skillsDetected: {
+    skills: {
       type: [String],
       default: [],
     },
@@ -63,6 +63,7 @@ const CvSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    
   },
   { timestamps: true }
 );

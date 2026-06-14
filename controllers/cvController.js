@@ -90,7 +90,7 @@ exports.uploadCV = async (req, res) => {
       fileName: newFileName,
       filePath: `/uploads/cvs/${candidateNumericId}/${newFileName}`,
       rawText: analysis.rawText,
-      skillsDetected: analysis.skillsDetected,
+skills: analysis.skillsDetected || [],
       analysisStatus: "completed",
     });
 
@@ -172,7 +172,7 @@ exports.guestUploadCV = async (req, res) => {
       fileName: req.file.filename,
       filePath: `/uploads/cvs/${req.file.filename}`,
       rawText: analysis.rawText,
-      skillsDetected: analysis.skillsDetected || [],
+skills: analysis.skillsDetected || [],
       uploadedAt: new Date(),
     },
   },
@@ -203,7 +203,7 @@ const skill = await Skill.findOneAndUpdate(
   cv,
   skill,
   extractedText: analysis.rawText,
-  skillsDetected: analysis.skillsDetected,
+skills: analysis.skillsDetected || [],
 });
 
   } catch (error) {
