@@ -6,7 +6,7 @@ const jobSchema = new mongoose.Schema(
     //   type: mongoose.Schema.Types.ObjectId,
     //   required:true,
     // },
-
+    
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -91,11 +91,22 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    status: {
-      type: String,
-      enum: ["Open", "Closed"],
-      default: "Open",
-    },
+ status: {
+  type: String,
+  enum: ["Open", "Closed", "Expired"],
+  default: "Open",
+},
+vacancies: {
+  type: Number,
+  default: 1,
+  min: 1,
+},
+
+filledPositions: {
+  type: Number,
+  default: 0,
+  min: 0,
+},
   },
   { timestamps: true }
 );

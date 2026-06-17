@@ -345,6 +345,9 @@ const getApplications = async (req, res) => {
 // ===============================
 // UPDATE APPLICATION STATUS
 // ===============================
+// ===============================
+// UPDATE APPLICATION STATUS
+// ===============================
 const updateApplicationStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -389,7 +392,35 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
+    // Store previous status before updating
+    const previousStatus = application.status;
+
+    // Update application status
     application.status = status;
+
+    // If hiring manager changes status to accepted
+    // and it was not already accepted before
+    if (status === "accepted" && previousStatus !== "accepted") {
+      // Optional: store accepted date
+      application.acceptedAt = new Date();
+
+      // Find related job
+      const job = await Job.findById(application.jobId);
+
+      if (job) {
+        // Increase filled position count by 1
+        job.filledPositions += 1;
+
+        // If filled positions reached vacancies,
+        // close the job immediately
+        if (job.filledPositions >= job.vacancies) {
+          job.status = "Closed";
+        }
+
+        await job.save();
+      }
+    }
+
     await application.save();
 
     res.status(200).json({
@@ -413,3 +444,18 @@ module.exports = {
   updateApplicationStatus,
   getRecommendedCandidates,
 };
+
+
+// Manager changes application status to accepted
+// ↓
+// Application status becomes accepted
+// ↓
+// acceptedAt is saved
+// ↓
+// Job filledPositions increases by 1
+// ↓
+// If filledPositions >= vacancies
+// ↓
+// Job status becomes Closed
+// ↓
+// Application record stays in database

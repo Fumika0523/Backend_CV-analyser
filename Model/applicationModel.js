@@ -39,7 +39,10 @@ const applicationSchema = new mongoose.Schema(
       enum: ["pending", "reviewing", "interview", "rejected", "accepted"],
       default: "pending",
     },
-
+acceptedAt: {
+  type: Date,
+  default: null,
+},
     appliedDate: {
       type: Date,
       default: Date.now,
@@ -53,6 +56,10 @@ const applicationSchema = new mongoose.Schema(
 matchedSkills: {
   type: [String],
   default: [],
+},
+acceptedAt: {
+  type: Date,
+  default: null,
 },
 
 missingSkills: {

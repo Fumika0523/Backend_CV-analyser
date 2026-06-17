@@ -1,8 +1,8 @@
-const { Skills } = require("openai/resources.js");
 const Job = require("../Model/jobModel");
 const Skill = require('../Model/skillsModel')
 const User = require("../Model/UserModel");
 const CV = require("../Model/CVModel");
+const Application = require("../Model/applicationModel");
 
 // CREATE JOB POST - company only
 exports.createJobPost = async (req, res) => {
@@ -11,22 +11,23 @@ exports.createJobPost = async (req, res) => {
       return res.status(403).json({ message: "Only companies can post jobs" });
     }
 
-    const {
-      title,
-      jobType,
-      workMode,
-      education,
-      experience,
-      keySkills,
-      location,
-      companyUrl,
-      responsibilities,
-      roleSummary,
-      compensationBenefits,
-      requirements,
-      applicationEndDate,
-      salary,
-    } = req.body;
+   const {
+  title,
+  jobType,
+  workMode,
+  education,
+  experience,
+  keySkills,
+  location,
+  companyUrl,
+  responsibilities,
+  roleSummary,
+  compensationBenefits,
+  requirements,
+  applicationEndDate,
+  salary,
+  vacancies,
+} = req.body
 
     let formattedLocation = location;
 
@@ -55,6 +56,8 @@ exports.createJobPost = async (req, res) => {
       requirements,
       applicationEndDate,
       salary,
+      vacancies: Number(vacancies) || 1,
+filledPositions: 0,
     });
 
     res.status(201).json({
@@ -124,7 +127,7 @@ exports.getSingleJobPost = async (req, res) => {
 
 // UPDATE JOB
 exports.updateJobPost = async (req, res) => {
-  // try {
+  try {
     const job = await Job.findById(req.params.id);
 
     if (!job) {
@@ -137,8 +140,14 @@ exports.updateJobPost = async (req, res) => {
 
     const updateData = { ...req.body };
 
+    if (updateData.vacancies !== undefined) {
+  updateData.vacancies = Number(updateData.vacancies) || 1;
+}
+
     if (typeof updateData.location === "string") {
-      const [city, country] = updateData.location.split(",").map((item) => item.trim());
+      const [city, country] = updateData.location
+        .split(",")
+        .map((item) => item.trim());
 
       updateData.location = {
         city: city || "",
@@ -146,26 +155,21 @@ exports.updateJobPost = async (req, res) => {
       };
     }
 
-    const updatedJob = await Job.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const updatedJob = await Job.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+      runValidators: true,
+    });
 
     res.status(200).json({
       message: "Job updated successfully",
       job: updatedJob,
     });
-  // } catch (error) {
-  //   console.error("Update job error:", error);
-
-  //   res.status(500).json({
-  //     message: error.message || "Server error",
-  //   });
-  // }
+  } catch (error) {
+    console.error("Update job error:", error);
+    res.status(500).json({
+      message: error.message || "Server error",
+    });
+  }
 };
 
 // DELETE JOB
@@ -181,20 +185,22 @@ exports.deleteJobPost = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
-    await job.deleteOne();
+    job.status = "Closed";
+    await job.save();
 
     res.status(200).json({
-      message: "Job deleted successfully",
+      message: "Job closed successfully",
+      job,
     });
   } catch (error) {
-    console.error("Delete job error:", error);
+    console.error("Close job error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 // Find skills from Skill Collectio
 exports.getMatchedJobsForCompany = async (req, res) => {
- // try {
+ try {
     const { jobId } = req.params;
 
     const job = await Job.findById(jobId);
@@ -285,12 +291,12 @@ title: job.title,
       matchedCandidates: sortedResults,
     });
 
-  // } catch (e) {
-  //   console.error("getMatchedJobs error:", e);
-  //   return res.status(500).json({ 
-  //     message: "Some internal error"
-  //    });
-  // }
+  } catch (e) {
+    console.error("getMatchedJobs error:", e);
+    return res.status(500).json({ 
+      message: "Some internal error"
+     });
+  }
 };
 
 exports.getMatchedJobsForCandidate = async (req, res) => {
@@ -312,7 +318,19 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     const candidateSkills = candidateSkillDoc.skills || [];
     const candidateCity = user.location?.city?.toLowerCase().trim();
 
-    const jobs = await Job.find({ status: "Open" }).lean();
+    const currentDate = new Date();
+
+    const appliedApplications = await Application.find({
+  candidateId: user.userId,
+}).select("jobId");
+
+const appliedJobIds = appliedApplications.map((app) => app.jobId);
+
+    const jobs = await Job.find({
+      status: "Open",
+      applicationEndDate: { $gte: currentDate },
+       _id: { $nin: appliedJobIds },
+    }).lean();
 
     const results = [];
 
@@ -389,9 +407,13 @@ exports.getMatchedJobsForGuest = async (req, res) => {
 
     const guestSkills = guestSkill.skills || [];
 
-
     //mongoose methods that tells mongodb - give me plain javascript obj. no need full mongoose doc.
-    const jobs = await Job.find({ status: "Open" }).lean();
+    const currentDate = new Date();
+
+const jobs = await Job.find({
+  status: "Open",
+  applicationEndDate: { $gte: currentDate },
+}).lean();
 
     const results = [];
 
@@ -428,7 +450,7 @@ console.log("JOB TITLE:", job.title);
 results.push({
   jobId: job._id,
   title: job.title,
-  companyUrl: job.companyUrl,
+  // companyUrl: job.companyUrl,
   location: job.location,
   salary: job.salary,
   jobType: job.jobType,
