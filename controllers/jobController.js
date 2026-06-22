@@ -225,14 +225,29 @@ exports.getMatchedJobsForCompany = async (req, res) => {
       });
     }
 
+const acceptedApplications = await Application.find({
+  status: "accepted",
+}).select("candidateId");
+
+const acceptedCandidateIds = acceptedApplications.map(
+  (app) => app.candidateId
+);
+
     const results = [];
 
 for (const candidate of candidateSkills) {
   console.log("CANDIDATE SKILLS:", candidate.skills);
+
   if (typeof candidate.candidateId !== "number") {
     console.log("Skipping invalid candidateId:", candidate.candidateId);
     continue;
-  }     
+  }
+
+  if (acceptedCandidateIds.includes(candidate.candidateId)) {
+    console.log("Skipping accepted candidate:", candidate.candidateId);
+    continue;
+  }
+   
       const matchedSkills = jobSkills.filter((jobSkill) =>
         candidate.skills.some(
           (candidateSkill) =>
@@ -334,6 +349,7 @@ const appliedJobIds = appliedApplications.map((app) => app.jobId);
 
     const results = [];
 
+    
     for (const job of jobs) {
       const jobSkills = job.keySkills || [];
       const jobCity = job.location?.city?.toLowerCase().trim();

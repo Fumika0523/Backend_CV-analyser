@@ -73,6 +73,7 @@ const calculateMatch = (
   const locationScore = locationMatch ? 20 : 0;
 
   const matchScore = Math.round(skillScore + locationScore);
+  console.log("matchScore",matchScore)
 
   return {
     matchedSkills,
@@ -110,6 +111,15 @@ const applyForJob = async (req, res) => {
       });
     }
 
+    const currentDate = new Date();
+
+if (job.status !== "Open" || new Date(job.applicationEndDate) < currentDate) {
+  return res.status(400).json({
+    success: false,
+    message: "This job is no longer open for applications",
+  });
+}
+
     const alreadyApplied = await Application.findOne({
       candidateId: user.userId,
       jobId,
@@ -128,15 +138,14 @@ const applyForJob = async (req, res) => {
           .sort({ version: -1 })
           .lean();
 
-    const candidateSkills = cv?.skills || [];
-    const jobSkills = job.keySkills || [];
+const candidateSkills = cv?.skills || cv?.skillsDetected || [];    const jobSkills = job.keySkills || [];
 
     const {
       matchedSkills,
       missingSkills,
       locationMatch,
       matchScore,
-    } = calculateMatch(
+    } = calculateMatch (
       candidateSkills,
       jobSkills,
       user.location,
@@ -188,6 +197,9 @@ const applyForJob = async (req, res) => {
   }
 };
 
+// ===============================
+// getRecommendedCandidates
+// ===============================
 const getRecommendedCandidates = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).lean();
@@ -199,45 +211,57 @@ const getRecommendedCandidates = async (req, res) => {
       });
     }
 
-    const jobs = await Job.find({ companyId: user._id }).lean();
+    const jobs = await Job.find({
+      companyId: user._id,
+      status: "Open",
+    }).lean();
 
     const applications = await Application.find({
       companyId: user.userId,
     }).lean();
 
-    const appliedCandidateIds = applications.map((app) => app.candidateId);
-
     const candidates = await User.find({
       role: "candidate",
-      userId: { $nin: appliedCandidateIds },
     }).lean();
 
     const results = [];
 
     for (const job of jobs) {
       for (const candidate of candidates) {
+        const alreadyApplied = applications.some(
+          (app) =>
+            app.candidateId === candidate.userId &&
+            app.jobId.toString() === job._id.toString()
+        );
+
+        if (alreadyApplied) continue;
+
         const cv = await CV.findOne({ candidateId: candidate.userId })
           .sort({ version: -1 })
           .lean();
-console.log("CV FOUND:", cv);
-console.log("CV SKILLS:", cv?.skills);
-console.log("CV SKILLS DETECTED:", cv?.skillsDetected);
+
         if (!cv) continue;
 
-        const candidateSkills = cv?.skills || [];
+        const candidateSkills = cv?.skills || cv?.skillsDetected || [];
         const jobSkills = job.keySkills || [];
 
         const {
-  matchedSkills,
-  missingSkills,
-  locationMatch,
-  matchScore,
-} = calculateMatch(
-  candidateSkills,
-  jobSkills,
-  candidate.location,
-  job.location
-);
+          matchedSkills,
+          missingSkills,
+          locationMatch,
+          matchScore,
+        } = calculateMatch(
+          candidateSkills,
+          jobSkills,
+          candidate.location,
+          job.location
+        );
+
+        console.log("matchedSkills", matchedSkills.length)
+        console.log("jobSkills", jobSkills.length)
+        console.log("matchScore",matchScore)
+
+        if (matchScore === 0) continue;
 
         results.push({
           candidateId: candidate.userId,
@@ -332,6 +356,7 @@ const getApplications = async (req, res) => {
       count: applications.length,
       applications,
     });
+
   } catch (error) {
     console.log("Get Applications Error:", error);
 
@@ -345,13 +370,13 @@ const getApplications = async (req, res) => {
 // ===============================
 // UPDATE APPLICATION STATUS
 // ===============================
-// ===============================
-// UPDATE APPLICATION STATUS
-// ===============================
 const updateApplicationStatus = async (req, res) => {
   try {
+
+    // Get new status sent from frontend
     const { status } = req.body;
 
+    // List of allowed statuses
     const allowedStatuses = [
       "pending",
       "reviewing",
@@ -360,6 +385,7 @@ const updateApplicationStatus = async (req, res) => {
       "accepted",
     ];
 
+    // Prevent invalid status values
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -367,8 +393,10 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
+    // Find application by MongoDB _id
     const application = await Application.findById(req.params.id);
 
+    // Stop if application does not exist
     if (!application) {
       return res.status(404).json({
         success: false,
@@ -376,8 +404,10 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
+    // Find logged-in company user
     const user = await User.findById(req.user.id);
 
+    // Only companies can change application status
     if (!user || user.role !== "company") {
       return res.status(403).json({
         success: false,
@@ -385,6 +415,8 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
+    // Security check:
+    // Company can only update applications belonging to their own jobs
     if (application.companyId !== user.userId) {
       return res.status(403).json({
         success: false,
@@ -392,43 +424,76 @@ const updateApplicationStatus = async (req, res) => {
       });
     }
 
-    // Store previous status before updating
+    // Save current status before changing it
     const previousStatus = application.status;
 
-    // Update application status
-    application.status = status;
+    // ====================================================
+    // ACCEPTED CANDIDATE LOGIC
+    // ====================================================
 
-    // If hiring manager changes status to accepted
-    // and it was not already accepted before
+    // Run only when:
+    // 1. New status is accepted
+    // 2. Application was not already accepted before
     if (status === "accepted" && previousStatus !== "accepted") {
-      // Optional: store accepted date
+
+      // Check if this candidate has already been accepted
+      // for another job in the entire system
+      const alreadyAcceptedApplication = await Application.findOne({
+        candidateId: application.candidateId,
+        status: "accepted",
+
+        // Ignore current application
+        _id: { $ne: application._id },
+      });
+
+      // Stop company from hiring candidate twice
+      if (alreadyAcceptedApplication) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This candidate has already been accepted for another job.",
+        });
+      }
+
+      // Store accepted timestamp
       application.acceptedAt = new Date();
 
-      // Find related job
+      // Find job related to this application
       const job = await Job.findById(application.jobId);
 
       if (job) {
-        // Increase filled position count by 1
+
+        // Increase hired count
         job.filledPositions += 1;
 
-        // If filled positions reached vacancies,
-        // close the job immediately
+        // Example:
+        // vacancies = 3
+        // filledPositions = 3
+        // => close job automatically
         if (job.filledPositions >= job.vacancies) {
           job.status = "Closed";
         }
 
+        // Save updated job
         await job.save();
       }
     }
 
+    // Update application status
+    application.status = status;
+
+    // Save application
     await application.save();
 
+    // Return success response
     res.status(200).json({
       success: true,
       message: "Application status updated",
       application,
     });
+
   } catch (error) {
+
     console.log("Update Status Error:", error);
 
     res.status(500).json({
