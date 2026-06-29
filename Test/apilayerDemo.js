@@ -34,4 +34,4 @@ async function parseResumeWithAPILayer(filePath) {
   }
 }
 
-parseResumeWithAPILayer('./sample.pdf');
+parseResumeWithAPILayer('./AvinashZala.pdf');

@@ -7,7 +7,7 @@ const { GoogleGenAI, Type } = require("@google/genai");
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
-
+// only give me the words
 const CVAnalyse = async (filePath) => {
   const dataBuffer = fs.readFileSync(filePath);
 
