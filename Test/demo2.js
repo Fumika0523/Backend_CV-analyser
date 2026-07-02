@@ -24,8 +24,8 @@ function preprocessAndStem(text) {
 async function loadAndTrainSkillsDataset() {
     console.log("Fetching and indexing skills dataset...");
     // 1. Fetch CSV data
-    const response = await axios.get(csvUrl);
-    const csvContent = response.data;
+    const response = await axios.get(csvUrl)
+    const csvContent = response.data
  
     // 2. Parse CSV
     const records = parse(csvContent, {
