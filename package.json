@@ -30,6 +30,7 @@
     "nodemailer": "^8.0.5",
     "nodemon": "^3.1.14",
     "openai": "^6.34.0",
-    "pdf-parse-new": "^2.1.0"
+    "pdf-parse-new": "^2.1.0",
+    "stripe": "^22.3.1"
   }
 }

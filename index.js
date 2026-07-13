@@ -52,6 +52,8 @@ const startServer = async () => {
   app.use(require("./routes/jobRoutes"));
 
   app.use("/uploads", express.static("uploads"));
+
+  app.use("/api",require('./routes/checkout'))
  
   app.listen(Port, () => {
 

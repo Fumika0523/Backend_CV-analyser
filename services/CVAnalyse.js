@@ -57,12 +57,16 @@ ${resumeText}
 
   const result = JSON.parse(response.text);
 
+  console.log("result",result)
   return {
   rawText: resumeText,
   skillsDetected: result.skillsDetected || [],
   education: result.education || [],
   qualifications: result.qualifications || [],
 };
+
 };
+
+
 
 module.exports = CVAnalyse;
