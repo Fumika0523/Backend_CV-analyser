@@ -73,7 +73,15 @@ filledPositions: 0,
 // GET ALL JOBS
 exports.getAllJobPosts = async (req, res) => {
   try {
-    const jobs = await Job.find()
+    const currentDate = new Date();
+
+    const jobs = await Job.find({
+      status: "Open",
+      applicationEndDate: { $gte: currentDate },
+      $expr: {
+        $lt: ["$filledPositions", "$vacancies"],
+      },
+    })
       .populate(
         "companyId",
         "firstName lastName companyName email city country"
@@ -84,7 +92,10 @@ exports.getAllJobPosts = async (req, res) => {
     res.status(200).json(jobs);
   } catch (error) {
     console.error("Get all jobs error:", error);
-    res.status(500).json({ message: "Server error" });
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 };
 

@@ -1,8 +1,7 @@
 const mongoose = require("mongoose");
- 
+
 const applicationSchema = new mongoose.Schema(
   {
-    //Mongoose ref normally works with MongoDB _id ObjectId.
     candidateId: {
       type: Number,
       required: true,
@@ -22,6 +21,7 @@ const applicationSchema = new mongoose.Schema(
     cvId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CV",
+      default: null,
     },
 
     title: {
@@ -39,46 +39,49 @@ const applicationSchema = new mongoose.Schema(
       enum: ["pending", "reviewing", "interview", "rejected", "accepted"],
       default: "pending",
     },
-acceptedAt: {
-  type: Date,
-  default: null,
-},
+
+    acceptedAt: {
+      type: Date,
+      default: null,
+    },
+
     appliedDate: {
       type: Date,
       default: Date.now,
     },
 
     matchScore: {
-  type: Number,
-  default: 0,
-},
+      type: Number,
+      default: 0,
+    },
 
-matchedSkills: {
-  type: [String],
-  default: [],
-},
-acceptedAt: {
-  type: Date,
-  default: null,
-},
+    matchedSkills: {
+      type: [String],
+      default: [],
+    },
 
-missingSkills: {
-  type: [String],
-  default: [],
-},
+    missingSkills: {
+      type: [String],
+      default: [],
+    },
 
-locationMatch: {
-  type: Boolean,
-  default: false,
-},
+    locationMatch: {
+      type: Boolean,
+      default: false,
+    },
 
-note: {
-  type: String,
-  default: "",
-},
-
+    note: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true }
 );
- 
+
+// Prevent a candidate from applying for the same job twice.
+applicationSchema.index(
+  { candidateId: 1, jobId: 1 },
+  { unique: true }
+);
+
 module.exports = mongoose.model("Application", applicationSchema);

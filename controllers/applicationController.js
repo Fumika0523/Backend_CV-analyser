@@ -190,6 +190,12 @@ const candidateSkills = cv?.skills || cv?.skillsDetected || [];    const jobSkil
   } catch (error) {
     console.log("Apply Job Error:", error);
 
+    if(error.code === 11000){
+      return res.statue(400).json({
+        success:false,
+        message:"You have already applied for this job."
+      })
+    }
     res.status(500).json({
       success: false,
       message: "Server Error",
