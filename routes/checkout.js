@@ -5,6 +5,8 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 // Final URL: POST http://localhost:5000/api/create-checkout-session
 router.post('/create-checkout-session', async (req, res) => {
   try {
+    console.log("Checkout request body:", req.body);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{
