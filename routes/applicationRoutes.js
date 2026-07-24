@@ -11,7 +11,7 @@ const {
 const auth = require("../middleware/auth");
 
 router.post("/apply", auth, applyForJob);
-router.get("/applications", auth, getApplications);
+router.get("/", auth, getApplications);
 router.get("/recommended-candidates", auth, getRecommendedCandidates);
 router.put("/update-applications/:id/status", auth, updateApplicationStatus);
 

@@ -45,7 +45,10 @@ const startServer = async () => {
 
   app.use(require("./routes/cvRoutes"));
 
-  app.use(require("./routes/applicationRoutes"));
+app.use(
+  "/applications",
+  require("./routes/applicationRoutes")
+);
 
   app.use("/skills", require("./routes/skillsRoute"));
 
