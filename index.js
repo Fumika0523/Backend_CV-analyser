@@ -45,12 +45,14 @@ const startServer = async () => {
 
   app.use(require("./routes/cvRoutes"));
 
-app.use(
-  "/applications",
-  require("./routes/applicationRoutes")
-);
+  app.use(
+    "/applications",
+    require("./routes/applicationRoutes")
+  );
 
   app.use("/skills", require("./routes/skillsRoute"));
+
+  app.use(require('./routes/jobAiRoutes'))
 
   app.use(require("./routes/jobRoutes"));
 
@@ -59,11 +61,8 @@ app.use(
   app.use("/api",require('./routes/checkout'))
  
   app.listen(Port, () => {
-
     console.log(`Server started at Port no.-${Port}`)
-
-  });
-
+  })
 };
  
 startServer();
