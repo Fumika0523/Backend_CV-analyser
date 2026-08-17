@@ -23,7 +23,7 @@ const generateToken = (user) => {
 exports.signUp = async (req, res) => {
   let user;
 
-  try {
+  // try {
     const {
       firstName,
       lastName,
@@ -35,6 +35,8 @@ exports.signUp = async (req, res) => {
       companyDescription,
       location,
     } = req.body;
+
+    console.log(req.body)
 
     const userExists = await User.findOne({
       $or: [{ email }, { phoneNumber }],
@@ -71,6 +73,7 @@ exports.signUp = async (req, res) => {
       otpExpiry: Date.now() + 5 * 60 * 1000,
       isVerified: false,
     };
+
 console.log("guestSessionId from signup:", req.body.guestSessionId);
 console.log("new candidate numeric userId:", userData.userId);
 
@@ -93,30 +96,30 @@ if (role === "candidate" && req.body.guestSessionId) {
     }
 
     user = await User.create(userData);
+console.log(user)
 
     await sendEmail({
   to: email,
   subject: "Your SkillfulJobs.ai verification code",
   html: otpEmailTemplate(otp),
 });
-
     return res.status(201).json({
       success: true,
       message: "OTP sent to your email",
       mongoId: user._id,
       userId: user.userId,
     });
-  } catch (error) {
-    console.error("SignUp error:", error);
+  // } catch (error) {
+  //   console.error("SignUp error:", error);
 
-    if (user?._id) {
-      await User.findByIdAndDelete(user._id);
-    }
+  //   if (user?._id) {
+  //     await User.findByIdAndDelete(user._id);
+  //   }
 
-    return res.status(500).json({
-      message: "Signup failed. Please try again.",
-    });
-  }
+  //   return res.status(500).json({
+  //     message: "Signup failed. Please try again.",
+  //   });
+  // }
 };
 
 //Verify OTP

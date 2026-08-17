@@ -209,96 +209,212 @@ exports.deleteJobPost = async (req, res) => {
   }
 };
 
-// Find skills from Skill Collectio
+const normalizeCountry = (country) => {
+  const value = String(country || "")
+    .toLowerCase()
+    .replace(/\./g, "")
+    .trim();
+
+  const aliases = {
+    uk: "united kingdom",
+    "u k": "united kingdom",
+    gb: "united kingdom",
+    "great britain": "united kingdom",
+    england: "united kingdom",
+    scotland: "united kingdom",
+    wales: "united kingdom",
+    "northern ireland": "united kingdom",
+  };
+
+  return aliases[value] || value;
+};
+
+const normalizeSkill = (skill) =>
+  String(skill || "").toLowerCase().trim();
+
+// Find matching candidates for a particular job
 exports.getMatchedJobsForCompany = async (req, res) => {
- try {
+  try {
     const { jobId } = req.params;
 
+    if (!jobId) {
+      return res.status(400).json({
+        message: "Job ID is required",
+      });
+    }
+
     const job = await Job.findById(jobId);
-    console.log("JOB SKILLS:", job.keySkills);
+
     if (!job) {
-      return res.status(404).json({ message: "Job not found" });
-    }
-
-    const jobSkills = job.keySkills || [];
-  const jobLocation = `${job.location?.city || ""}, ${job.location?.country || ""}`
-  .toLowerCase()
-  .trim();
-
-    const candidateSkills = await Skill.find({
-      candidateId: { $ne: null },
-    }
-  );
-
-    if (!candidateSkills || candidateSkills.length === 0) {
       return res.status(404).json({
+        message: "Job not found",
+      });
+    }
+
+    const jobSkills = Array.isArray(job.keySkills)
+      ? job.keySkills.filter(Boolean)
+      : [];
+
+    console.log("JOB ID:", jobId);
+    console.log("JOB SKILLS:", jobSkills);
+    console.log("JOB LOCATION:", job.location);
+
+    if (jobSkills.length === 0) {
+      return res.status(200).json({
+        title: job.title,
+        jobLocation: job.location,
+        jobSkills: [],
+        matchedCandidates: [],
+        message: "This job does not have any key skills",
+      });
+    }
+
+    const candidateSkillDocuments = await Skill.find({
+      candidateId: { $ne: null },
+    });
+
+    if (candidateSkillDocuments.length === 0) {
+      return res.status(200).json({
+        title: job.title,
+        jobLocation: job.location,
+        jobSkills,
+        matchedCandidates: [],
         message: "No candidate skills found",
       });
     }
 
-const acceptedApplications = await Application.find({
-  status: "accepted",
-}).select("candidateId");
-
-const acceptedCandidateIds = acceptedApplications.map(
-  (app) => app.candidateId
-);
+    const acceptedCandidateIds = new Set(
+      (
+        await Application.distinct("candidateId", {
+          status: "accepted",
+        })
+      ).map(Number)
+    );
 
     const results = [];
 
-for (const candidate of candidateSkills) {
-  console.log("CANDIDATE SKILLS:", candidate.skills);
-
-  if (typeof candidate.candidateId !== "number") {
-    console.log("Skipping invalid candidateId:", candidate.candidateId);
-    continue;
-  }
-
-  if (acceptedCandidateIds.includes(candidate.candidateId)) {
-    console.log("Skipping accepted candidate:", candidate.candidateId);
-    continue;
-  }
-   
-      const matchedSkills = jobSkills.filter((jobSkill) =>
-        candidate.skills.some(
-          (candidateSkill) =>
-            candidateSkill.toLowerCase().includes(jobSkill.toLowerCase()) ||
-            jobSkill.toLowerCase().includes(candidateSkill.toLowerCase())
-        )
+    for (const candidateSkillDocument of candidateSkillDocuments) {
+      // Supports both number and numeric-string candidate IDs
+      const candidateId = Number(
+        candidateSkillDocument.candidateId
       );
 
-      const matchScore =
-        jobSkills.length > 0
-          ? Math.round((matchedSkills.length / jobSkills.length) * 100)
-          : 0;
+      console.log("CHECKING CANDIDATE:", candidateId);
 
-const user = await User.findOne({ userId: candidate.candidateId });
-
-const jobCity = job.location?.city?.toLowerCase().trim();
-const candidateCity = user?.location?.city?.toLowerCase().trim();
-
-const locationMatched = jobCity === candidateCity;
-
-console.log("JOB CITY:", jobCity);
-console.log("CANDIDATE CITY:", candidateCity);
-console.log("LOCATION MATCHED:", locationMatched);
-console.log("MATCHED SKILLS:", matchedSkills);
-console.log("MATCH SCORE:", matchScore);
-
-      if (matchScore === 0 || !locationMatched) {
+      if (!Number.isFinite(candidateId)) {
+        console.log(
+          "Skipping invalid candidateId:",
+          candidateSkillDocument.candidateId
+        );
         continue;
       }
 
-      const cv = await CV.findOne({ candidateId: candidate.candidateId }).sort({
+      // Set uses .has(), not .includes()
+      if (acceptedCandidateIds.has(candidateId)) {
+        console.log(
+          "Skipping already accepted candidate:",
+          candidateId
+        );
+        continue;
+      }
+
+      const candidateSkills = Array.isArray(
+        candidateSkillDocument.skills
+      )
+        ? candidateSkillDocument.skills.filter(Boolean)
+        : [];
+
+      console.log("CANDIDATE SKILLS:", candidateSkills);
+
+      const matchedSkills = jobSkills.filter((jobSkill) => {
+        const normalizedJobSkill = normalizeSkill(jobSkill);
+
+        return candidateSkills.some((candidateSkill) => {
+          const normalizedCandidateSkill =
+            normalizeSkill(candidateSkill);
+
+          return (
+            normalizedCandidateSkill === normalizedJobSkill ||
+            normalizedCandidateSkill.includes(
+              normalizedJobSkill
+            ) ||
+            normalizedJobSkill.includes(
+              normalizedCandidateSkill
+            )
+          );
+        });
+      });
+
+      const matchScore = Math.round(
+        (matchedSkills.length / jobSkills.length) * 100
+      );
+
+      console.log("MATCHED SKILLS:", matchedSkills);
+      console.log("MATCH SCORE:", matchScore);
+
+      // Candidate must have at least one matching skill
+      if (matchScore === 0) {
+        console.log(
+          "Skipping because no skills matched:",
+          candidateId
+        );
+        continue;
+      }
+
+      const user = await User.findOne({
+        userId: candidateId,
+      });
+
+      if (!user) {
+        console.log(
+          "Skipping because User was not found:",
+          candidateId
+        );
+        continue;
+      }
+
+      const jobCountry = normalizeCountry(
+        job.location?.country
+      );
+
+      const candidateCountry = normalizeCountry(
+        user.location?.country
+      );
+
+      const locationMatched = Boolean(
+        jobCountry &&
+          candidateCountry &&
+          jobCountry === candidateCountry
+      );
+
+      console.log("JOB COUNTRY:", jobCountry);
+      console.log("CANDIDATE COUNTRY:", candidateCountry);
+      console.log("COUNTRY MATCHED:", locationMatched);
+
+      // Only allow candidates from the same country
+      if (!locationMatched) {
+        console.log(
+          "Skipping because countries do not match:",
+          candidateId
+        );
+        continue;
+      }
+
+      const cv = await CV.findOne({
+        candidateId,
+      }).sort({
         version: -1,
       });
 
       results.push({
-        candidateId: candidate.candidateId,
-        candidateName: user
-          ? `${user.firstName} ${user.lastName}`
-          : "Unknown Candidate",
-        email: user?.email,
+        candidateId,
+        candidateName:
+          `${user.firstName || ""} ${
+            user.lastName || ""
+          }`.trim() || `Candidate ${candidateId}`,
+        email: user.email || "",
+        candidateLocation: user.location || null,
+        locationMatched,
         matchedSkills,
         totalJobSkills: jobSkills.length,
         matchScore,
@@ -306,24 +422,33 @@ console.log("MATCH SCORE:", matchScore);
       });
     }
 
-    const sortedResults = results.sort((a, b) => b.matchScore - a.matchScore);
+    const sortedResults = results.sort(
+      (a, b) => b.matchScore - a.matchScore
+    );
 
-console.log("FINAL SORTED RESULTS:", sortedResults);
+    console.log(
+      "FINAL SORTED RESULTS:",
+      sortedResults
+    );
 
     return res.status(200).json({
-title: job.title,
+      title: job.title,
       jobLocation: job.location,
       jobSkills,
       matchedCandidates: sortedResults,
     });
+  } catch (error) {
+    console.error(
+      "getMatchedJobsForCompany error:",
+      error
+    );
 
-  } catch (e) {
-    console.error("getMatchedJobs error:", e);
-    return res.status(500).json({ 
-      message: "Some internal error"
-     });
+    return res.status(500).json({
+      message: "Failed to fetch matching candidates",
+    });
   }
 };
+
 
 exports.getMatchedJobsForCandidate = async (req, res) => {
   try {
@@ -342,8 +467,7 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     }
 
     const candidateSkills = candidateSkillDoc.skills || [];
-    const candidateCity = user.location?.city?.toLowerCase().trim();
-
+   const candidateCountry = normalizeCountry(user.location?.country);
     const currentDate = new Date();
 
     const appliedApplications = await Application.find({
@@ -363,9 +487,13 @@ const appliedJobIds = appliedApplications.map((app) => app.jobId);
     
     for (const job of jobs) {
       const jobSkills = job.keySkills || [];
-      const jobCity = job.location?.city?.toLowerCase().trim();
+    const jobCountry = normalizeCountry(job.location?.country);
 
-      const locationMatched = candidateCity === jobCity;
+const locationMatched = Boolean(
+  candidateCountry &&
+  jobCountry &&
+  candidateCountry === jobCountry
+);
 
       const matchedSkills = jobSkills.filter((jobSkill) =>
         candidateSkills.some(
@@ -411,6 +539,7 @@ const appliedJobIds = appliedApplications.map((app) => app.jobId);
     res.status(500).json({ message: "Failed to fetch matched jobs" });
   }
 };
+
 
 exports.getMatchedJobsForGuest = async (req, res) => {
   try {
