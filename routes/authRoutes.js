@@ -12,7 +12,7 @@ const {
   resetPassword,
 
 } = require("../controllers/authController.js");
-
+const validateEmailForOtp = require("../utils/validateEmail");
 // test route
 // router.get("/test", (req, res) => {
 //   res.send("User route working");

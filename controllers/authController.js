@@ -23,7 +23,7 @@ const generateToken = (user) => {
 exports.signUp = async (req, res) => {
   let user;
 
-  // try {
+   try {
     const {
       firstName,
       lastName,
@@ -109,17 +109,17 @@ console.log(user)
       mongoId: user._id,
       userId: user.userId,
     });
-  // } catch (error) {
-  //   console.error("SignUp error:", error);
+  } catch (error) {
+    console.error("SignUp error:", error);
 
-  //   if (user?._id) {
-  //     await User.findByIdAndDelete(user._id);
-  //   }
+    if (user?._id) {
+      await User.findByIdAndDelete(user._id);
+    }
 
-  //   return res.status(500).json({
-  //     message: "Signup failed. Please try again.",
-  //   });
-  // }
+    return res.status(500).json({
+      message: "Signup failed. Please try again.",
+    });
+  }
 };
 
 //Verify OTP

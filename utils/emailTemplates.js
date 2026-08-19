@@ -1,4 +1,4 @@
-// utils/emailTemplates.js
+//creates email designs
 
 const brandName = "SkillfulJobs.ai";
 const appUrl = "http://localhost:3000";
