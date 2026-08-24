@@ -7,6 +7,7 @@ const CV = require("../Model/CVModel");
 const {
   otpEmailTemplate,
 } = require("../utils/emailTemplates");
+const validateEmailForOtp = require("../utils/validateEmail");
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -27,7 +28,9 @@ exports.signUp = async (req, res) => {
     const {
       firstName,
       lastName,
-      email,
+      //rawEmail : exactly what the user entered >>  req.body.email and rename the local variable to rawEmail.
+      //email: the validated and normalized version, such as lowercase with spaces removed.
+      email:rawEmail,
       password,
       role,
       phoneNumber,
@@ -36,7 +39,32 @@ exports.signUp = async (req, res) => {
       location,
     } = req.body;
 
-    console.log(req.body)
+     /*
+      Validate the original email input.
+
+      This assumes validateEmailForOtp:
+      1. Checks the email format and domain.
+      2. Throws an error when the email is invalid.
+      3. Returns the cleaned email, for example:
+         "  USER@GMAIL.COM " becomes "user@gmail.com".
+    */
+const emailValidation = await validateEmailForOtp(rawEmail);
+
+// Registration continues only when the validator explicitly returns "valid".
+if (emailValidation.status !== "valid") {
+  return res.status(400).json({
+    field: "email",
+    code: emailValidation.status,
+    message:
+      emailValidation.message ||
+      "Please enter a valid email address.",
+    suggestion: emailValidation.suggestion || null,
+  });
+}
+
+// Use the cleaned lowercase email.
+const email = emailValidation.email;
+   // console.log(req.body, status, email)
 
     const userExists = await User.findOne({
       $or: [{ email }, { phoneNumber }],
@@ -44,7 +72,7 @@ exports.signUp = async (req, res) => {
 
     if (userExists) {
       return res.status(400).json({
-        message: "User already exists. Please login.",
+        message: "User already exists. Please Sign in.",
       });
     }
 
@@ -110,17 +138,50 @@ console.log(user)
       userId: user.userId,
     });
   } catch (error) {
-    console.error("SignUp error:", error);
+  console.error("SignUp error:", error);
 
-    if (user?._id) {
-      await User.findByIdAndDelete(user._id);
+  if (user?._id) {
+    await User.findByIdAndDelete(user._id);
+  }
+
+  // Validation errors (bad email, etc.) are the client's fault — say why.
+  if (error.name === "ValidationError" || error.statusCode === 400) {
+    return res.status(400).json({ message: error.message });
+  }
+
+  return res.status(500).json({
+    message: "Signup failed. Please check the detail again.",
+  });
+}
+};
+
+exports.checkEmail = async (req, res) => {
+  try {
+    const result = await validateEmailForOtp(req.body.email);
+
+    if (result.status !== "valid") {
+      return res.status(400).json({
+        valid: false,
+        message: result.message,
+        suggestion: result.suggestion || null,
+      });
     }
 
-    return res.status(500).json({
-      message: "Signup failed. Please try again.",
+    return res.status(200).json({
+      valid: true,
+      email: result.email,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      valid: false,
+      message:
+        error.statusCode === 503
+          ? error.message
+          : "Email validation failed.",
     });
   }
 };
+
 
 //Verify OTP
 exports.verifyOtp = async (req, res) => {

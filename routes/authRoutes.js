@@ -6,11 +6,10 @@ const {
   signIn,
   verifyOtp,
   resendOtp,
-
   forgotPassword,
   verifyResetOtp,
   resetPassword,
-
+  checkEmail
 } = require("../controllers/authController.js");
 const validateEmailForOtp = require("../utils/validateEmail");
 // test route
@@ -21,7 +20,7 @@ const validateEmailForOtp = require("../utils/validateEmail");
 // AUTH ROUTES
 router.post("/signup", signUp);
 router.post("/signin", signIn);
-
+router.post("/check-email", checkEmail);
 router.post("/verify-otp", verifyOtp);
 router.post("/resend-otp", resendOtp);
 

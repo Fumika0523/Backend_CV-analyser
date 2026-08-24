@@ -1,5 +1,48 @@
 const mongoose = require("mongoose");
 
+const JOB_CATEGORIES = [
+  "Accounting & Finance",
+  "Administration",
+  "Customer Service",
+  "Design & Creative",
+  "Education & Training",
+  "Engineering",
+  "Healthcare",
+  "Hospitality",
+  "Human Resources & Recruitment",
+  "IT & Software",
+  "Legal",
+  "Logistics & Supply Chain",
+  "Management & Operations",
+  "Manufacturing",
+  "Marketing",
+  "Retail",
+  "Sales",
+  "Science & Research",
+  "Security & Emergency Services",
+  "Skilled Trades & Construction",
+  "Other",
+];
+
+const INDUSTRIES = [
+  "Technology",
+  "Banking & Financial Services",
+  "Healthcare",
+  "Education",
+  "Retail",
+  "Construction",
+  "Manufacturing",
+  "Hospitality & Leisure",
+  "Automotive",
+  "Aviation",
+  "Logistics & Transport",
+  "Energy & Environment",
+  "Professional Services",
+  "Public Sector",
+  "Charity & Non-profit",
+  "Other",
+];
+
 const jobSchema = new mongoose.Schema(
   {
     // jobId:{
@@ -80,6 +123,18 @@ const jobSchema = new mongoose.Schema(
     //   type: String,
     //   required: false,
     // },
+
+category: {
+  type: String,
+  required: true,
+  enum: JOB_CATEGORIES,
+},
+
+industry: {
+  type: String,
+  required: true,
+  enum: INDUSTRIES,
+},
 
     applicationEndDate: {
       type: Date,

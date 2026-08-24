@@ -1,76 +1,112 @@
-//validates format and email domain
+// utils/validateEmailForOtp.js
+const { resolveMx } = require("node:dns").promises;
 
-//It lets your backend look up information about internet domains.
-//.promises allows you to use await.
-const dns = require("node:dns").promises;
-//This checks whether the email has a basic valid structure:
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Common typing mistakes for popular email providers.
+const COMMON_DOMAIN_TYPOS = {
+  "gmaill.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gmai.com": "gmail.com",
+  "gmail.co": "gmail.com",
 
-//rawEmail means the original email received from the frontend.
-const validateEmailForOtp = async(rawEmail)=>{
-    //Checks whether the submitted value is text.
-    if(typeof rawEmail !== "string"){
-        return {status: "invalid-format"};
+  "hotmial.com": "hotmail.com",
+  "hotmai.com": "hotmail.com",
+
+  "outlok.com": "outlook.com",
+  "outllook.com": "outlook.com",
+
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
+};
+
+const validateEmailForOtp = async (rawEmail) => {
+  // Make sure the received value is a string.
+  const email =
+    typeof rawEmail === "string"
+      ? rawEmail.trim().toLowerCase()
+      : "";
+
+  // Check the basic email structure.
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  if (!emailPattern.test(email)) {
+    return {
+      status: "invalid-format",
+      email,
+      message: "Please enter a valid email address.",
+    };
+  }
+
+  const atPosition = email.lastIndexOf("@");
+  const localPart = email.slice(0, atPosition);
+  const domain = email.slice(atPosition + 1);
+
+  // Detect common mistakes such as gmaill.com.
+  const correctedDomain = COMMON_DOMAIN_TYPOS[domain];
+
+  if (correctedDomain) {
+    const suggestion = `${localPart}@${correctedDomain}`;
+
+    return {
+      status: "invalid-domain",
+      email,
+      suggestion,
+      message: `This email domain looks incorrect. Did you mean ${suggestion}?`,
+    };
+  }
+
+  try {
+
+    //Node’s resolveMx() performs a DNS query for the domain’s mail-exchange records. It returns the available mail servers or rejects with a DNS error such as no data/domain not found. Node.js DNS documentation
+    const mxRecords = await resolveMx(domain);
+
+    const hasUsableMailServer = mxRecords.some(
+      (record) => record.exchange && record.exchange !== "."
+    );
+
+    if (!hasUsableMailServer) {
+      return {
+        status: "invalid-domain",
+        email,
+        message:
+          "This email domain cannot receive emails. Please check the spelling.",
+      };
     }
-    const email = rawEmail.trim().toLowerCase()
-//.test(email) checks the email against the regular expression.
-    if(!emailPattern.test(email)){
-        return {status:"invalid-format"}
+
+    return {
+      status: "valid",
+      email,
+      message: "Email domain is valid.",
+    };
+  } catch (error) {
+    // These mean that the domain or its mail records do not exist.
+    const invalidDomainCodes = [
+      "ENOTFOUND",
+      "ENODATA",
+      "EFORMERR",
+      "EBADNAME",
+    ];
+
+    if (invalidDomainCodes.includes(error.code)) {
+      return {
+        status: "invalid-domain",
+        email,
+        message:
+          "This email domain does not exist or cannot receive emails.",
+      };
     }
 
-    const domain = email.split("@")[1];
-    try{
-    // resolveMx() searches for mail severs connected to the domain
-    // await waits for the result
-    const records = await dns.resolveMx(domain);
-    // .some() checks whether at least one item passes the test
-    const hasWorkingMx = records.some(
-        // checking: record.exchange contains a mail-server address, The address is not "." << is a special value meaning the domain intentionally does not receive email.
-        (record) => record.exchange && record.exchange !== "."
-    )
-    // return the domain result
-    return{
-        //Mx is true, return valid, otherwise return invalid-domain
-        status: hasWorkingMx? "valid" : "invalid-domain",
-        email
-    }
-    }catch(error){
-        //ENOTFOUND: normally means the domain does not exist.
-        if(error.code === "ENOTFOUND"){
-            return{
-                status:"invalid-domain",
-                email
-            }
-        }
-        //ENODATA:  means the domain exists, but Node could not find an MX record.
-        if(error.code === "ENODATA"){
-            //Promise.allSettled() runs multiple asynchronous operations and waits for all of them.
-            const results = await Promise.allSettled([
-                //Looks for an IPv4 address.
-                dns.resolve4(domain),
-                //Looks for an IPv6 address.
-                dns.resolve6(domain),
-            ])
-            // check whether an IP was found
-            const hasAddress = results.some(
-                (result)=>
-                // check whether at least one lookup succeeded
-                //Means that the lookup completed successfully.
-                    result.status == "fulfilled" && 
-                    result.value.length > 0
-            )
-            return {
-                status: hasAddress ? "possible":"invalid-domain",
-                email,
-            }
-        }
-        console.error("Email DNS validation failed:",error.code)
+    // Timeout or DNS-server failure is not proof that the email is invalid.
+    // However, registration should not continue without completing the check.
+    console.error("Email DNS check failed:", error);
 
-        return{
-            status:"unknown",
-            email
-        }
-    }
-}
+    const verificationError = new Error(
+      "We could not verify the email domain. Please try again."
+    );
 
-module.exports = validateEmailForOtp
+    verificationError.statusCode = 503;
+    throw verificationError;
+  }
+};
+
+module.exports = validateEmailForOtp;

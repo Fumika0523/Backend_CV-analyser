@@ -20,8 +20,7 @@ const emailWrapper = (title, content) => `
 
       <div style="background:linear-gradient(135deg,#2563EB,#60A5FA);padding:30px;text-align:center;">
         ${logoHtml}
-        <p style="color: color:#FFFFFF;;margin-top:10px;margin-bottom:0;">
-          ${title}
+<p style="color:#FFFFFF;margin-top:10px;margin-bottom:0;">          ${title}
         </p>
       </div>
 
