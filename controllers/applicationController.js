@@ -1,6 +1,6 @@
 const Application = require("../Model/applicationModel");
 const User = require("../Model/UserModel");
-const Job = require("../Model/jobModel")
+const Job = require("../Model/jobModel");
 const sendEmail = require("../utils/sendEmail");
 const CV = require("../Model/CVModel");
 
@@ -9,6 +9,10 @@ const {
   companyApplicationTemplate,
 } = require("../utils/emailTemplates");
 
+
+// ======================================================
+// HELPER: NORMALIZE SKILL
+// ======================================================
 
 const normalizeSkill = (skill) => {
   return skill
@@ -19,6 +23,11 @@ const normalizeSkill = (skill) => {
     .trim();
 };
 
+
+// ======================================================
+// HELPER: NORMALIZE LOCATION
+// ======================================================
+
 const normalizeLocation = (location) => {
   if (!location) return "";
 
@@ -27,6 +36,17 @@ const normalizeLocation = (location) => {
   }
 
   if (typeof location === "object") {
+    /*
+     * Your current application match logic uses
+     * the CITY when a location object is provided.
+     *
+     * Example:
+     *
+     * candidate.location.city = "Manchester"
+     * job.location.city       = "Manchester"
+     *
+     * => locationMatch = true
+     */
     return (
       location.city ||
       location.town ||
@@ -40,8 +60,16 @@ const normalizeLocation = (location) => {
       .trim();
   }
 
-  return location.toString().toLowerCase().trim();
+  return location
+    .toString()
+    .toLowerCase()
+    .trim();
 };
+
+
+// ======================================================
+// HELPER: CALCULATE APPLICATION MATCH
+// ======================================================
 
 const calculateMatch = (
   candidateSkills = [],
@@ -49,31 +77,65 @@ const calculateMatch = (
   candidateLocation,
   jobLocation
 ) => {
-  const normalizedCandidateSkills = candidateSkills.map(normalizeSkill);
+  const normalizedCandidateSkills =
+    candidateSkills.map(normalizeSkill);
 
-  const matchedSkills = jobSkills.filter((jobSkill) =>
-    normalizedCandidateSkills.includes(normalizeSkill(jobSkill))
+  /*
+   * Find skills that exist in both:
+   *
+   * candidate CV skills
+   * job required skills
+   */
+  const matchedSkills = jobSkills.filter(
+    (jobSkill) =>
+      normalizedCandidateSkills.includes(
+        normalizeSkill(jobSkill)
+      )
   );
 
+  /*
+   * Required job skills the candidate does
+   * NOT currently have.
+   */
   const missingSkills = jobSkills.filter(
-    (jobSkill) => !normalizedCandidateSkills.includes(normalizeSkill(jobSkill))
+    (jobSkill) =>
+      !normalizedCandidateSkills.includes(
+        normalizeSkill(jobSkill)
+      )
   );
 
-  const normalizedCandidateLocation = normalizeLocation(candidateLocation);
-  const normalizedJobLocation = normalizeLocation(jobLocation);
+  const normalizedCandidateLocation =
+    normalizeLocation(candidateLocation);
 
-  const locationMatch =
+  const normalizedJobLocation =
+    normalizeLocation(jobLocation);
+
+  const locationMatch = Boolean(
     normalizedCandidateLocation &&
-    normalizedJobLocation &&
-    normalizedCandidateLocation === normalizedJobLocation;
+      normalizedJobLocation &&
+      normalizedCandidateLocation ===
+        normalizedJobLocation
+  );
 
+  /*
+   * Your existing scoring:
+   *
+   * Skills   = max 80 points
+   * Location = max 20 points
+   */
   const skillScore =
-    jobSkills.length > 0 ? (matchedSkills.length / jobSkills.length) * 80 : 0;
+    jobSkills.length > 0
+      ? (matchedSkills.length /
+          jobSkills.length) *
+        80
+      : 0;
 
-  const locationScore = locationMatch ? 20 : 0;
+  const locationScore =
+    locationMatch ? 20 : 0;
 
-  const matchScore = Math.round(skillScore + locationScore);
-  console.log("matchScore",matchScore)
+  const matchScore = Math.round(
+    skillScore + locationScore
+  );
 
   return {
     matchedSkills,
@@ -83,25 +145,53 @@ const calculateMatch = (
   };
 };
 
-// ===============================
+
+// ======================================================
 // APPLY FOR JOB
-// ===============================
+// ======================================================
 
 const applyForJob = async (req, res) => {
   try {
     const { jobId, cvId } = req.body;
 
-    const user = await User.findById(req.user.id).lean();
+    /*
+     * Candidate user.
+     *
+     * req.user.id = MongoDB User._id
+     */
+    const user = await User.findById(
+      req.user.id
+    ).lean();
 
-    if (!user || user.role !== "candidate") {
+    if (
+      !user ||
+      user.role !== "candidate"
+    ) {
       return res.status(403).json({
         success: false,
-        message: "Only candidates can apply for jobs",
+        message:
+          "Only candidates can apply for jobs",
       });
     }
 
+    /*
+     *
+     * Job.companyId now references Company.
+     *
+     * Job.createdBy references the recruiter
+     * who originally created the vacancy.
+     *
+     * We populate BOTH.
+     */
     const job = await Job.findById(jobId)
-      .populate("companyId", "userId companyName email firstName lastName")
+      .populate(
+        "companyId",
+        "companyName companyDescription companyUrl location isActive"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName email"
+      )
       .lean();
 
     if (!job) {
@@ -111,190 +201,235 @@ const applyForJob = async (req, res) => {
       });
     }
 
+    /*
+     * don't accept applications for jobs
+     * belonging to disabled companies.
+     */
+    if (
+      job.companyId?.isActive === false
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This company is currently unavailable",
+      });
+    }
+
     const currentDate = new Date();
 
-if (job.status !== "Open" || new Date(job.applicationEndDate) < currentDate) {
-  return res.status(400).json({
-    success: false,
-    message: "This job is no longer open for applications",
-  });
-}
+    /*
+     * Job must:
+     *
+     * - still be Open
+     * - not be expired
+     * - still have vacancies
+     */
+    if (
+      job.status !== "Open" ||
+      new Date(job.applicationEndDate) <
+        currentDate ||
+      job.filledPositions >= job.vacancies
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This job is no longer open for applications",
+      });
+    }
 
-    const alreadyApplied = await Application.findOne({
-      candidateId: user.userId,
-      jobId,
-    }).lean();
+    /*
+     * Prevent duplicate applications.
+     *
+     * You also have a database unique index,
+     * so this is frontend-friendly protection.
+     */
+    const alreadyApplied =
+      await Application.findOne({
+        candidateId: user.userId,
+        jobId,
+      }).lean();
 
     if (alreadyApplied) {
       return res.status(400).json({
         success: false,
-        message: "You already applied for this job",
+        message:
+          "You already applied for this job",
       });
     }
 
+    /*
+     * Use explicitly chosen CV if cvId exists.
+     *
+     * Otherwise use candidate's latest CV.
+     */
     const cv = cvId
       ? await CV.findById(cvId).lean()
-      : await CV.findOne({ candidateId: user.userId })
-          .sort({ version: -1 })
+      : await CV.findOne({
+          candidateId: user.userId,
+        })
+          .sort({
+            version: -1,
+          })
           .lean();
 
-const candidateSkills = cv?.skills || cv?.skillsDetected || [];    const jobSkills = job.keySkills || [];
+    const candidateSkills =
+      cv?.skills ||
+      cv?.skillsDetected ||
+      [];
+
+    const jobSkills =
+      job.keySkills || [];
 
     const {
       matchedSkills,
       missingSkills,
       locationMatch,
       matchScore,
-    } = calculateMatch (
+    } = calculateMatch(
       candidateSkills,
       jobSkills,
       user.location,
       job.location
     );
 
-    const application = await Application.create({
-      candidateId: user.userId,
-      companyId: job.companyId.userId,
-      jobId: job._id,
-      title: job.title,
-      companyName: job.companyId.companyName || "Company",
-      cvId: cv?._id,
-      status: "pending",
-      matchScore,
-      matchedSkills,
-      missingSkills,
-      locationMatch,
-      note: "",
-    });
+    /*
+     * CHANGED:
+     *
+     * OLD:
+     *
+     * companyId: job.companyId.userId
+     *
+     * That stored the recruiter's numeric ID.
+     *
+     *
+     * NEW:
+     *
+     * job.companyId is the actual populated
+     * Company document.
+     *
+     * Application.companyId stores Company._id.
+     */
+    const application =
+      await Application.create({
+        candidateId:
+          user.userId,
 
-    const candidateHtml = candidateApplicationTemplate(user, job);
-    const companyHtml = companyApplicationTemplate(user, job);
+        companyId:
+          job.companyId._id,
+
+        jobId:
+          job._id,
+
+        title:
+          job.title,
+
+        companyName:
+          job.companyId?.companyName ||
+          "Company",
+
+        cvId:
+          cv?._id || null,
+
+        status:
+          "pending",
+
+        matchScore,
+
+        matchedSkills,
+
+        missingSkills,
+
+        locationMatch,
+
+        note: "",
+      });
+
+    /*
+     * Candidate confirmation email.
+     */
+    const candidateHtml =
+      candidateApplicationTemplate(
+        user,
+        job
+      );
+
+    /*
+     * Company/recruiter notification email.
+     */
+    const companyHtml =
+      companyApplicationTemplate(
+        user,
+        job
+      );
 
     await sendEmail({
       to: user.email,
-      subject: "Application submitted successfully",
-      html: candidateHtml,
+
+      subject:
+        "Application submitted successfully",
+
+      html:
+        candidateHtml,
     });
 
-    await sendEmail({
-      to: job.companyId.email,
-      subject: "New job application received",
-      html: companyHtml,
-    });
+    /*
+     * CHANGED:
+     *
+     * CompanyModel does not contain recruiter email.
+     *
+     * The recruiter who created the job is stored
+     * in Job.createdBy.
+     *
+     * Therefore:
+     *
+     * job.createdBy.email
+     *
+     * receives the application notification.
+     */
+    if (job.createdBy?.email) {
+      await sendEmail({
+        to: job.createdBy.email,
 
-    res.status(201).json({
-      success: true,
-      message: "Application submitted successfully",
-      application,
-    });
-  } catch (error) {
-    console.log("Apply Job Error:", error);
+        subject:
+          "New job application received",
 
-    if(error.code === 11000){
-      return res.statue(400).json({
-        success:false,
-        message:"You have already applied for this job."
-      })
-    }
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
-  }
-};
-
-// ===============================
-// getRecommendedCandidates
-// ===============================
-const getRecommendedCandidates = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).lean();
-
-    if (!user || user.role !== "company") {
-      return res.status(403).json({
-        success: false,
-        message: "Only companies can view recommended candidates",
+        html:
+          companyHtml,
       });
     }
 
-    const jobs = await Job.find({
-      companyId: user._id,
-      status: "Open",
-    }).lean();
-
-    const applications = await Application.find({
-      companyId: user.userId,
-    }).lean();
-
-    const candidates = await User.find({
-      role: "candidate",
-    }).lean();
-
-    const results = [];
-
-    for (const job of jobs) {
-      for (const candidate of candidates) {
-        const alreadyApplied = applications.some(
-          (app) =>
-            app.candidateId === candidate.userId &&
-            app.jobId.toString() === job._id.toString()
-        );
-
-        if (alreadyApplied) continue;
-
-        const cv = await CV.findOne({ candidateId: candidate.userId })
-          .sort({ version: -1 })
-          .lean();
-
-        if (!cv) continue;
-
-        const candidateSkills = cv?.skills || cv?.skillsDetected || [];
-        const jobSkills = job.keySkills || [];
-
-        const {
-          matchedSkills,
-          missingSkills,
-          locationMatch,
-          matchScore,
-        } = calculateMatch(
-          candidateSkills,
-          jobSkills,
-          candidate.location,
-          job.location
-        );
-
-        console.log("matchedSkills", matchedSkills.length)
-        console.log("jobSkills", jobSkills.length)
-        console.log("matchScore",matchScore)
-
-        if (matchScore === 0) continue;
-
-        results.push({
-          candidateId: candidate.userId,
-          candidateName: `${candidate.firstName} ${candidate.lastName}`,
-          candidateEmail: candidate.email,
-          jobTitle: job.title,
-          jobId: job._id,
-          cvFilePath: cv.filePath,
-          matchScore,
-          matchedSkills,
-          missingSkills,
-          locationMatch,
-          contactStatus: "Need to contact",
-        });
-      }
-    }
-
-    results.sort((a, b) => b.matchScore - a.matchScore);
-
-    res.status(200).json({
+    return res.status(201).json({
       success: true,
-      count: results.length,
-      candidates: results,
+
+      message:
+        "Application submitted successfully",
+
+      application,
     });
   } catch (error) {
-    console.log("Recommended Candidates Error:", error);
-    res.status(500).json({
+    console.error(
+      "Apply Job Error:",
+      error
+    );
+
+    /*
+     * FIX:
+     *
+     * Your previous code had:
+     *
+     * res.statue(400)
+     *
+     * which is a typo.
+     */
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You have already applied for this job.",
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       message: "Server Error",
     });
@@ -302,212 +437,817 @@ const getRecommendedCandidates = async (req, res) => {
 };
 
 
-// ===============================
+// ======================================================
+// GET RECOMMENDED CANDIDATES
+// ======================================================
+
+const getRecommendedCandidates =
+  async (req, res) => {
+    try {
+      /*
+       * Get logged-in company user.
+       */
+      const user = await User.findById(
+        req.user.id
+      ).lean();
+
+      if (
+        !user ||
+        user.role !== "company"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Only companies can view recommended candidates",
+        });
+      }
+
+      /*
+       * NEW:
+       *
+       * A company user MUST now belong
+       * to an actual Company.
+       */
+      if (!user.companyId) {
+        return res.status(400).json({
+          success: false,
+
+          message:
+            "Your account is not linked to a company",
+        });
+      }
+
+      /*
+       * CHANGED:
+       *
+       * OLD:
+       *
+       * companyId: user._id
+       *
+       * NEW:
+       *
+       * companyId: user.companyId
+       *
+       * This means all recruiters belonging
+       * to the same company see the same jobs.
+       */
+      const jobs = await Job.find({
+        companyId:
+          user.companyId,
+
+        status:
+          "Open",
+
+        applicationEndDate: {
+          $gte: new Date(),
+        },
+
+        $expr: {
+          $lt: [
+            "$filledPositions",
+            "$vacancies",
+          ],
+        },
+      }).lean();
+
+      /*
+       * CHANGED:
+       *
+       * Applications now belong to Company._id,
+       * not company user's numeric userId.
+       */
+      const applications =
+        await Application.find({
+          companyId:
+            user.companyId,
+        }).lean();
+
+      /*
+       * NEW:
+       *
+       * Only recommend candidates who have NOT
+       * disabled recruiter visibility.
+       *
+       * $ne: false also allows old candidate
+       * documents that do not yet physically
+       * contain availableForWork.
+       */
+      const candidates =
+        await User.find({
+          role:
+            "candidate",
+
+          availableForWork: {
+            $ne: false,
+          },
+        }).lean();
+
+      /*
+       * Candidate accepted anywhere in the
+       * platform should no longer appear in
+       * recruiter recommendations.
+       */
+      const acceptedCandidateIds =
+        new Set(
+          (
+            await Application.distinct(
+              "candidateId",
+              {
+                status:
+                  "accepted",
+              }
+            )
+          ).map(Number)
+        );
+
+      const results = [];
+
+      for (const job of jobs) {
+        for (
+          const candidate
+          of candidates
+        ) {
+          /*
+           * Don't recommend a candidate who
+           * has already been accepted elsewhere.
+           */
+          if (
+            acceptedCandidateIds.has(
+              Number(
+                candidate.userId
+              )
+            )
+          ) {
+            continue;
+          }
+
+          /*
+           * Don't recommend someone who already
+           * applied for THIS specific job.
+           */
+          const alreadyApplied =
+            applications.some(
+              (app) =>
+                Number(
+                  app.candidateId
+                ) ===
+                  Number(
+                    candidate.userId
+                  ) &&
+                app.jobId.toString() ===
+                  job._id.toString()
+            );
+
+          if (alreadyApplied) {
+            continue;
+          }
+
+          /*
+           * Find candidate's newest CV.
+           */
+          const cv =
+            await CV.findOne({
+              candidateId:
+                candidate.userId,
+            })
+              .sort({
+                version: -1,
+              })
+              .lean();
+
+          if (!cv) {
+            continue;
+          }
+
+          const candidateSkills =
+            cv?.skills ||
+            cv?.skillsDetected ||
+            [];
+
+          const jobSkills =
+            job.keySkills || [];
+
+          const {
+            matchedSkills,
+            missingSkills,
+            locationMatch,
+            matchScore,
+          } = calculateMatch(
+            candidateSkills,
+            jobSkills,
+            candidate.location,
+            job.location
+          );
+
+          /*
+           * Don't recommend a candidate
+           * with absolutely no match.
+           */
+          if (matchScore === 0) {
+            continue;
+          }
+
+          results.push({
+            candidateId:
+              candidate.userId,
+
+            candidateName:
+              `${candidate.firstName || ""} ${
+                candidate.lastName || ""
+              }`.trim(),
+
+            /*
+             * TODO:
+             *
+             * We will remove/hide this during
+             * the Candidate Privacy task.
+             *
+             * For now it remains so we don't
+             * break your existing frontend.
+             */
+            candidateEmail:
+              candidate.email,
+
+            jobTitle:
+              job.title,
+
+            jobId:
+              job._id,
+
+            cvFilePath:
+              cv.filePath,
+
+            matchScore,
+
+            matchedSkills,
+
+            missingSkills,
+
+            locationMatch,
+
+            contactStatus:
+              "Need to contact",
+          });
+        }
+      }
+
+      /*
+       * Highest match first.
+       */
+      results.sort(
+        (a, b) =>
+          b.matchScore -
+          a.matchScore
+      );
+
+      return res.status(200).json({
+        success: true,
+
+        count:
+          results.length,
+
+        candidates:
+          results,
+      });
+    } catch (error) {
+      console.error(
+        "Recommended Candidates Error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Server Error",
+      });
+    }
+  };
+
+
+// ======================================================
 // GET APPLICATIONS
-// ===============================
-const getApplications = async (req, res) => {
+// ======================================================
+
+const getApplications = async (
+  req,
+  res
+) => {
   try {
-    const user = await User.findById(req.user.id).lean();
+    const user = await User.findById(
+      req.user.id
+    ).lean();
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "User not found",
       });
     }
 
     let applications = [];
 
-    if (user.role === "candidate") {
-      applications = await Application.find({
-        candidateId: user.userId,
-      })
-        .sort({ appliedDate: -1 })
-        .lean();
-    }
+    // ==================================================
+    // CANDIDATE APPLICATIONS
+    // ==================================================
 
-    if (user.role === "company") {
-      applications = await Application.find({
-        companyId: user.userId,
-      })
-        .sort({ appliedDate: -1 })
-        .lean();
-
-      applications = await Promise.all(
-        applications.map(async (app) => {
-          const candidate = await User.findOne({
-            userId: app.candidateId,
-          }).lean();
-
-      const cv = app.cvId ?
-      await CV.findById(app.cvId).lean()
-      :
-      await CV.findOne({ candidateId: app.candidateId }).sort({ version: -1 }).lean();
-
-          return {
-            ...app,
-            candidateName: candidate
-              ? `${candidate.firstName} ${candidate.lastName}`
-              : `Candidate ${app.candidateId}`,
-            candidateEmail: candidate?.email || "",
-              cvFilePath: cv?.filePath || "",
-              applicationType: "already_applied",
-          };
+    if (
+      user.role === "candidate"
+    ) {
+      /*
+       * Candidate logic stays the same.
+       *
+       * Application.candidateId still uses
+       * your numeric User.userId.
+       */
+      applications =
+        await Application.find({
+          candidateId:
+            user.userId,
         })
-      );
+          .sort({
+            appliedDate: -1,
+          })
+          .lean();
     }
 
-    res.status(200).json({
-      success: true,
-      count: applications.length,
-      applications,
-    });
+    // ==================================================
+    // COMPANY APPLICATIONS
+    // ==================================================
 
-  } catch (error) {
-    console.log("Get Applications Error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
-  }
-};
-
-// ===============================
-// UPDATE APPLICATION STATUS
-// ===============================
-const updateApplicationStatus = async (req, res) => {
-  try {
-
-    // Get new status sent from frontend
-    const { status } = req.body;
-
-    // List of allowed statuses
-    const allowedStatuses = [
-      "pending",
-      "reviewing",
-      "interview",
-      "rejected",
-      "accepted",
-    ];
-
-    // Prevent invalid status values
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status",
-      });
-    }
-
-    // Find application by MongoDB _id
-    const application = await Application.findById(req.params.id);
-
-    // Stop if application does not exist
-    if (!application) {
-      return res.status(404).json({
-        success: false,
-        message: "Application not found",
-      });
-    }
-
-    // Find logged-in company user
-    const user = await User.findById(req.user.id);
-
-    // Only companies can change application status
-    if (!user || user.role !== "company") {
-      return res.status(403).json({
-        success: false,
-        message: "Only companies can update application status",
-      });
-    }
-
-    // Security check:
-    // Company can only update applications belonging to their own jobs
-    if (application.companyId !== user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
-
-    // Save current status before changing it
-    const previousStatus = application.status;
-
-    // ====================================================
-    // ACCEPTED CANDIDATE LOGIC
-    // ====================================================
-
-    // Run only when:
-    // 1. New status is accepted
-    // 2. Application was not already accepted before
-    if (status === "accepted" && previousStatus !== "accepted") {
-
-      // Check if this candidate has already been accepted
-      // for another job in the entire system
-      const alreadyAcceptedApplication = await Application.findOne({
-        candidateId: application.candidateId,
-        status: "accepted",
-
-        // Ignore current application
-        _id: { $ne: application._id },
-      });
-
-      // Stop company from hiring candidate twice
-      if (alreadyAcceptedApplication) {
+    if (
+      user.role === "company"
+    ) {
+      /*
+       * NEW safety check.
+       */
+      if (!user.companyId) {
         return res.status(400).json({
           success: false,
+
           message:
-            "This candidate has already been accepted for another job.",
+            "Your account is not linked to a company",
         });
       }
 
-      // Store accepted timestamp
-      application.acceptedAt = new Date();
+      /*
+       * CHANGED:
+       *
+       * OLD:
+       *
+       * companyId: user.userId
+       *
+       * NEW:
+       *
+       * companyId: user.companyId
+       *
+       * Therefore Alice and Bob from the
+       * same company can see applications
+       * belonging to their company.
+       */
+      applications =
+        await Application.find({
+          companyId:
+            user.companyId,
+        })
+          .sort({
+            appliedDate: -1,
+          })
+          .lean();
 
-      // Find job related to this application
-      const job = await Job.findById(application.jobId);
+      /*
+       * Add candidate details and CV
+       * information to each application.
+       */
+      applications =
+        await Promise.all(
+          applications.map(
+            async (app) => {
+              const candidate =
+                await User.findOne({
+                  userId:
+                    app.candidateId,
+                }).lean();
 
-      if (job) {
+              /*
+               * Prefer the CV actually used
+               * during the application.
+               *
+               * If not available, fall back
+               * to latest candidate CV.
+               */
+              const cv = app.cvId
+                ? await CV.findById(
+                    app.cvId
+                  ).lean()
+                : await CV.findOne({
+                    candidateId:
+                      app.candidateId,
+                  })
+                    .sort({
+                      version: -1,
+                    })
+                    .lean();
 
-        // Increase hired count
-        job.filledPositions += 1;
+              return {
+                ...app,
 
-        // Example:
-        // vacancies = 3
-        // filledPositions = 3
-        // => close job automatically
-        if (job.filledPositions >= job.vacancies) {
-          job.status = "Closed";
-        }
+                candidateName:
+                  candidate
+                    ? `${candidate.firstName || ""} ${
+                        candidate.lastName || ""
+                      }`.trim()
+                    : `Candidate ${app.candidateId}`,
 
-        // Save updated job
-        await job.save();
-      }
+                /*
+                 * TODO:
+                 * Candidate privacy task will
+                 * remove this from recruiter view.
+                 */
+                candidateEmail:
+                  candidate?.email ||
+                  "",
+
+                cvFilePath:
+                  cv?.filePath ||
+                  "",
+
+                applicationType:
+                  "already_applied",
+              };
+            }
+          )
+        );
     }
 
-    // Update application status
-    application.status = status;
-
-    // Save application
-    await application.save();
-
-    // Return success response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Application status updated",
-      application,
+
+      count:
+        applications.length,
+
+      applications,
     });
-
   } catch (error) {
+    console.error(
+      "Get Applications Error:",
+      error
+    );
 
-    console.log("Update Status Error:", error);
-
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message:
+        "Server Error",
     });
   }
 };
+
+
+// ======================================================
+// UPDATE APPLICATION STATUS
+// ======================================================
+
+const updateApplicationStatus =
+  async (req, res) => {
+    try {
+      /*
+       * New status sent by frontend.
+       */
+      const { status } =
+        req.body;
+
+      const allowedStatuses = [
+        "pending",
+        "reviewing",
+        "interview",
+        "rejected",
+        "accepted",
+      ];
+
+      /*
+       * Prevent random/invalid values.
+       */
+      if (
+        !allowedStatuses.includes(
+          status
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid status",
+        });
+      }
+
+      /*
+       * Find logged-in company user.
+       */
+      const user =
+        await User.findById(
+          req.user.id
+        );
+
+      if (
+        !user ||
+        user.role !== "company"
+      ) {
+        return res.status(403).json({
+          success: false,
+
+          message:
+            "Only companies can update application status",
+        });
+      }
+
+      /*
+       * Company user must belong to
+       * a real Company.
+       */
+      if (!user.companyId) {
+        return res.status(400).json({
+          success: false,
+
+          message:
+            "Your account is not linked to a company",
+        });
+      }
+
+      /*
+       * Find application.
+       */
+      const application =
+        await Application.findById(
+          req.params.id
+        );
+
+      if (!application) {
+        return res.status(404).json({
+          success: false,
+
+          message:
+            "Application not found",
+        });
+      }
+
+      /*
+       * CHANGED SECURITY CHECK:
+       *
+       * OLD:
+       *
+       * application.companyId !== user.userId
+       *
+       * NEW:
+       *
+       * compare Company._id values.
+       *
+       * ObjectIds should be converted to strings
+       * before comparison.
+       */
+      if (
+        application.companyId.toString() !==
+        user.companyId.toString()
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Unauthorized",
+        });
+      }
+
+      /*
+       * Save previous status so we know
+       * whether this is actually a transition.
+       */
+      const previousStatus =
+        application.status;
+
+      /*
+       * No need to update anything if
+       * the status hasn't changed.
+       */
+      if (
+        previousStatus === status
+      ) {
+        return res.status(200).json({
+          success: true,
+
+          message:
+            "Application status is already up to date",
+
+          application,
+        });
+      }
+
+      /*
+       * Find the related job.
+       */
+      const job =
+        await Job.findById(
+          application.jobId
+        );
+
+      /*
+       * Extra security:
+       *
+       * The job should also belong to this
+       * same company.
+       */
+      if (
+        job &&
+        job.companyId.toString() !==
+          user.companyId.toString()
+      ) {
+        return res.status(403).json({
+          success: false,
+
+          message:
+            "You are not authorized to manage this job",
+        });
+      }
+
+
+      // ==================================================
+      // MOVING INTO ACCEPTED
+      // ==================================================
+
+      if (
+        status === "accepted" &&
+        previousStatus !==
+          "accepted"
+      ) {
+        /*
+         * Candidate can only be accepted
+         * once across the platform.
+         */
+        const alreadyAcceptedApplication =
+          await Application.findOne({
+            candidateId:
+              application.candidateId,
+
+            status:
+              "accepted",
+
+            _id: {
+              $ne:
+                application._id,
+            },
+          });
+
+        if (
+          alreadyAcceptedApplication
+        ) {
+          return res.status(400).json({
+            success: false,
+
+            message:
+              "This candidate has already been accepted for another job.",
+          });
+        }
+
+        /*
+         * Make sure vacancy still exists.
+         */
+        if (
+          job &&
+          job.filledPositions >=
+            job.vacancies
+        ) {
+          return res.status(400).json({
+            success: false,
+
+            message:
+              "This job has already filled all vacancies.",
+          });
+        }
+
+        /*
+         * Save when candidate was accepted.
+         */
+        application.acceptedAt =
+          new Date();
+
+        if (job) {
+          /*
+           * Increase number of filled jobs.
+           */
+          job.filledPositions += 1;
+
+          /*
+           * Close automatically when all
+           * vacancies have been filled.
+           */
+          if (
+            job.filledPositions >=
+            job.vacancies
+          ) {
+            job.status =
+              "Closed";
+          }
+
+          await job.save();
+        }
+      }
+
+
+      // ==================================================
+      // MOVING AWAY FROM ACCEPTED
+      // ==================================================
+
+      /*
+       * FIX:
+       *
+       * Your old code increased filledPositions
+       * when status became accepted,
+       * but did not decrease it if a manager
+       * later changed:
+       *
+       * accepted -> rejected
+       *
+       * or
+       *
+       * accepted -> reviewing
+       *
+       * This would make vacancy counts incorrect.
+       */
+      if (
+        previousStatus ===
+          "accepted" &&
+        status !== "accepted"
+      ) {
+        application.acceptedAt =
+          null;
+
+        if (job) {
+          /*
+           * Never let filledPositions
+           * become negative.
+           */
+          job.filledPositions =
+            Math.max(
+              0,
+              job.filledPositions -
+                1
+            );
+
+          /*
+           * Reopen the job only when:
+           *
+           * - vacancies are available
+           * - application deadline hasn't passed
+           *
+           * Otherwise it stays Closed/Expired.
+           */
+          const stillWithinDeadline =
+            new Date(
+              job.applicationEndDate
+            ) >= new Date();
+
+          if (
+            job.filledPositions <
+              job.vacancies &&
+            stillWithinDeadline
+          ) {
+            job.status =
+              "Open";
+          }
+
+          await job.save();
+        }
+      }
+
+      /*
+       * Finally update the application.
+       */
+      application.status =
+        status;
+
+      await application.save();
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          "Application status updated",
+
+        application,
+      });
+    } catch (error) {
+      console.error(
+        "Update Status Error:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Server Error",
+      });
+    }
+  };
+
+
+// ======================================================
+// EXPORT CONTROLLERS
+// ======================================================
 
 module.exports = {
   applyForJob,
@@ -517,16 +1257,33 @@ module.exports = {
 };
 
 
-// Manager changes application status to accepted
-// ↓
-// Application status becomes accepted
-// ↓
-// acceptedAt is saved
-// ↓
-// Job filledPositions increases by 1
-// ↓
-// If filledPositions >= vacancies
-// ↓
-// Job status becomes Closed
-// ↓
-// Application record stays in database
+/*
+ *
+ * Company recruiter changes application
+ * status to:
+ *
+ * accepted
+ *      ↓
+ * acceptedAt saved
+ *      ↓
+ * Job.filledPositions + 1
+ *      ↓
+ * filledPositions >= vacancies?
+ *      ↓ YES
+ * Job.status = Closed
+ *      ↓
+ * Application remains in database
+ *
+ *
+ * If accepted status is later reversed:
+ *
+ * accepted -> rejected/reviewing/etc.
+ *      ↓
+ * acceptedAt = null
+ *      ↓
+ * Job.filledPositions - 1
+ *      ↓
+ * If vacancy exists and deadline is valid
+ *      ↓
+ * Job reopens
+ */

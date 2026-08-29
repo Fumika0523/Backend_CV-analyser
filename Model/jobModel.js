@@ -45,12 +45,20 @@ const INDUSTRIES = [
 
 const jobSchema = new mongoose.Schema(
   {
-    // jobId:{
-    //   type: mongoose.Schema.Types.ObjectId,
-    //   required:true,
-    // },
-    
-    companyId: {
+     companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Company",
+      required: true,
+    },
+
+    /*
+     * Records WHICH recruiter created the job.
+     *
+     * Example:
+     * companyId = Google
+     * createdBy = Alice
+     */
+    createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
@@ -61,22 +69,37 @@ const jobSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+
     companyUrl: {
       type: String,
       required: true,
       trim: true,
     },
+
     jobType: {
       type: String,
-      enum: ["Full-time", "Part-time", "Contract", "Internship"],
+
+      enum: [
+        "Full-time",
+        "Part-time",
+        "Contract",
+        "Internship",
+      ],
+
       default: "Full-time",
     },
 
     workMode: {
       type: String,
-      enum: ["Office", "Hybrid", "Remote"],
+
+      enum: [
+        "Office",
+        "Hybrid",
+        "Remote",
+      ],
+
       default: "Office",
-  },
+    },
 
     education: {
       type: String,
@@ -93,15 +116,32 @@ const jobSchema = new mongoose.Schema(
       default: [],
     },
 
-      requirements: {
+    requirements: {
       type: [String],
       default: [],
     },
 
-        location: {
-  city: { type: String, required: true },
-  country: { type: String, required: true },
-},
+    /*
+     * Job location is different from
+     * Company.location.
+     *
+  Company: ABC Recruitment Ltd
+Company office: London
+
+Job: Software Engineer
+Actual workplace: Manchester
+     */
+    location: {
+      city: {
+        type: String,
+        required: true,
+      },
+
+      country: {
+        type: String,
+        required: true,
+      },
+    },
 
     responsibilities: {
       type: [String],
@@ -118,23 +158,17 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    //CompanyDescription is stored in the User collection
-    // description: {
-    //   type: String,
-    //   required: false,
-    // },
+    category: {
+      type: String,
+      required: true,
+      enum: JOB_CATEGORIES,
+    },
 
-category: {
-  type: String,
-  required: true,
-  enum: JOB_CATEGORIES,
-},
-
-industry: {
-  type: String,
-  required: true,
-  enum: INDUSTRIES,
-},
+    industry: {
+      type: String,
+      required: true,
+      enum: INDUSTRIES,
+    },
 
     applicationEndDate: {
       type: Date,
@@ -146,24 +180,36 @@ industry: {
       required: true,
     },
 
- status: {
-  type: String,
-  enum: ["Open", "Closed", "Expired"],
-  default: "Open",
-},
-vacancies: {
-  type: Number,
-  default: 1,
-  min: 1,
-},
+    status: {
+      type: String,
 
-filledPositions: {
-  type: Number,
-  default: 0,
-  min: 0,
-},
+      enum: [
+        "Open",
+        "Closed",
+        "Expired",
+      ],
+
+      default: "Open",
+    },
+
+    vacancies: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    filledPositions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model("Job", jobSchema);
+module.exports = mongoose.model(
+  "Job",
+  jobSchema
+);

@@ -38,13 +38,18 @@ exports.getUser = async (req, res) => {
 };
 
 //updateUserProfile
+// Update User Profile
 exports.updateUserProfile = async (req, res) => {
   try {
     const authHeader = req.header("Authorization");
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
       return res.status(401).json({
-        message: "Authorization header is missing or invalid",
+        message:
+          "Authorization header is missing or invalid",
       });
     }
 
@@ -58,7 +63,9 @@ exports.updateUserProfile = async (req, res) => {
     const user = await User.findById(decoded.id);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
     const {
@@ -68,38 +75,72 @@ exports.updateUserProfile = async (req, res) => {
       companyName,
       companyDescription,
       location,
+      availableForWork,
     } = req.body;
 
-    user.firstName = firstName || user.firstName;
-    user.lastName = lastName || user.lastName;
-    user.phoneNumber = phoneNumber || user.phoneNumber;
+    // Common fields
+    user.firstName =
+      firstName || user.firstName;
 
+    user.lastName =
+      lastName || user.lastName;
+
+    user.phoneNumber =
+      phoneNumber || user.phoneNumber;
+
+    // Location
     if (location) {
       user.location = {
-        city: location.city || user.location?.city,
-        country: location.country || user.location?.country,
+        city:
+          location.city ||
+          user.location?.city,
+
+        country:
+          location.country ||
+          user.location?.country,
       };
     }
 
+    // Candidate-only field
+    if (
+      user.role === "candidate" &&
+      typeof availableForWork === "boolean"
+    ) {
+      user.availableForWork =
+        availableForWork;
+    }
+
+    // Company-only fields
     if (user.role === "company") {
-      user.companyName = companyName || user.companyName;
-      user.companyDescription = companyDescription || user.companyDescription;
+      user.companyName =
+        companyName || user.companyName;
+
+      user.companyDescription =
+        companyDescription ||
+        user.companyDescription;
     }
 
     await user.save();
 
-    const updatedUser = await User.findById(decoded.id).select(
-      "-password -otp -otpExpiry"
-    );
+    const updatedUser =
+      await User.findById(decoded.id).select(
+        "-password -otp -otpExpiry"
+      );
 
     return res.status(200).json({
-      message: "Profile updated successfully",
+      message:
+        "Profile updated successfully",
       user: updatedUser,
     });
   } catch (error) {
-    console.error("updateUserProfile error:", error);
+    console.error(
+      "updateUserProfile error:",
+      error
+    );
+
     return res.status(401).json({
-      message: "Invalid or expired token",
+      message:
+        "Invalid or expired token",
     });
   }
 };

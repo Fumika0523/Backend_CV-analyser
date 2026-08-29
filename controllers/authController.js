@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const Company = require("../Model/companyModel");
 const User = require("../Model/UserModel");
 const bcrypt = require("bcryptjs");
 const sendEmail = require("../utils/sendEmail")
@@ -22,71 +23,119 @@ const generateToken = (user) => {
 //req = request from frontend
 //res= response back to frontend
 exports.signUp = async (req, res) => {
+  /*
+   * Keep references outside try so that if something
+   * fails later, we can clean up created records.
+   */
   let user;
+  let company;
 
-   try {
+  try {
     const {
       firstName,
       lastName,
-      //rawEmail : exactly what the user entered >>  req.body.email and rename the local variable to rawEmail.
-      //email: the validated and normalized version, such as lowercase with spaces removed.
-      email:rawEmail,
+
+      // User-entered email before validation.
+      email: rawEmail,
+
       password,
       role,
       phoneNumber,
+
+      /*
+       * These are used only when role === "company".
+       */
       companyName,
       companyDescription,
+
       location,
     } = req.body;
 
-     /*
-      Validate the original email input.
+    // =====================================================
+    // 1. VALIDATE EMAIL
+    // =====================================================
 
-      This assumes validateEmailForOtp:
-      1. Checks the email format and domain.
-      2. Throws an error when the email is invalid.
-      3. Returns the cleaned email, for example:
-         "  USER@GMAIL.COM " becomes "user@gmail.com".
-    */
-const emailValidation = await validateEmailForOtp(rawEmail);
+    const emailValidation =
+      await validateEmailForOtp(rawEmail);
 
-// Registration continues only when the validator explicitly returns "valid".
-if (emailValidation.status !== "valid") {
-  return res.status(400).json({
-    field: "email",
-    code: emailValidation.status,
-    message:
-      emailValidation.message ||
-      "Please enter a valid email address.",
-    suggestion: emailValidation.suggestion || null,
-  });
-}
+    if (emailValidation.status !== "valid") {
+      return res.status(400).json({
+        field: "email",
+        code: emailValidation.status,
 
-// Use the cleaned lowercase email.
-const email = emailValidation.email;
-   // console.log(req.body, status, email)
+        message:
+          emailValidation.message ||
+          "Please enter a valid email address.",
+
+        suggestion:
+          emailValidation.suggestion || null,
+      });
+    }
+
+    // Use normalized / cleaned email.
+    const email = emailValidation.email;
+
+    // =====================================================
+    // 2. CHECK FOR EXISTING USER
+    // =====================================================
 
     const userExists = await User.findOne({
-      $or: [{ email }, { phoneNumber }],
+      $or: [
+        { email },
+        { phoneNumber },
+      ],
     });
 
     if (userExists) {
       return res.status(400).json({
-        message: "User already exists. Please Sign in.",
+        message:
+          "User already exists. Please Sign in.",
       });
     }
 
-    if (role === "company" && !companyName) {
+    // =====================================================
+    // 3. VALIDATE COMPANY REGISTRATION
+    // =====================================================
+
+    /*
+     * A company user must provide a company name
+     * because we're going to create a Company document.
+     */
+    if (
+      role === "company" &&
+      !companyName?.trim()
+    ) {
       return res.status(400).json({
-        message: "Company name is required for company account.",
+        message:
+          "Company name is required for company account.",
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // =====================================================
+    // 4. HASH PASSWORD
+    // =====================================================
+
+    const salt =
+      await bcrypt.genSalt(10);
+
+    const hashedPassword =
+      await bcrypt.hash(
+        password,
+        salt
+      );
+
+    // =====================================================
+    // 5. CREATE OTP + NUMERIC USER ID
+    // =====================================================
 
     const otp = generateOTP();
-    const userId = await getNextSequence("userId");
+
+    const userId =
+      await getNextSequence("userId");
+
+    // =====================================================
+    // 6. PREPARE USER
+    // =====================================================
 
     const userData = {
       userId,
@@ -97,62 +146,217 @@ const email = emailValidation.email;
       role,
       phoneNumber,
       location,
+
       otp,
-      otpExpiry: Date.now() + 5 * 60 * 1000,
+
+      otpExpiry:
+        Date.now() +
+        5 * 60 * 1000,
+
       isVerified: false,
     };
 
-console.log("guestSessionId from signup:", req.body.guestSessionId);
-console.log("new candidate numeric userId:", userData.userId);
-
-if (role === "candidate" && req.body.guestSessionId) {
-  const updatedCV = await CV.updateMany(
-    { guestSessionId: req.body.guestSessionId },
-    {
-      $set: {
-        candidateId: userData.userId,
-        guestSessionId: null,
-      },
-    }
-  );
-
-  console.log("Guest CV link result:", updatedCV);
-}
+    /*
+     * TEMPORARY:
+     *
+     * Keep these legacy User fields while the rest
+     * of your frontend is still being migrated.
+     *
+     * Later, companyName and companyDescription
+     * should come from CompanyModel only.
+     */
     if (role === "company") {
-      userData.companyName = companyName;
-      userData.companyDescription = companyDescription;
+      userData.companyName =
+        companyName.trim();
+
+      userData.companyDescription =
+        companyDescription || "";
     }
 
-    user = await User.create(userData);
-console.log(user)
+    // =====================================================
+    // 7. CREATE USER FIRST
+    // =====================================================
+
+    /*
+     * We create the User first because Company.createdBy
+     * requires a real User._id.
+     */
+    user = await User.create(
+      userData
+    );
+
+    // =====================================================
+    // 8. CREATE COMPANY FOR FIRST COMPANY USER
+    // =====================================================
+
+    if (role === "company") {
+      /*
+       * This registration represents creation of a
+       * NEW company workspace.
+       *
+       * Later, additional recruiters will JOIN this
+       * Company instead of creating another one.
+       */
+      company =
+        await Company.create({
+          companyName:
+            companyName.trim(),
+
+          companyDescription:
+            companyDescription || "",
+
+          /*
+           * Company location = company / recruiter
+           * organisation's main location.
+           *
+           * This is separate from individual Job.location.
+           */
+          location: {
+            city:
+              location?.city || "",
+
+            country:
+              location?.country || "",
+          },
+
+          /*
+           * Alice is the user creating this company.
+           */
+          createdBy:
+            user._id,
+        });
+
+      /*
+       * Connect the user back to the newly
+       * created Company.
+       */
+      user.companyId =
+        company._id;
+
+      /*
+       * The first person creating the company
+       * becomes the  company_admin.
+       */
+      user.companyRole =
+        "company_admin";
+
+      await user.save();
+    }
+
+    // =====================================================
+    // 9. LINK GUEST CV FOR CANDIDATE
+    // =====================================================
+
+    /*
+     * Only candidate accounts use the guest CV flow.
+     */
+    if (
+      role === "candidate" &&
+      req.body.guestSessionId
+    ) {
+      const updatedCV =
+        await CV.updateMany(
+          {
+            guestSessionId:
+              req.body.guestSessionId,
+          },
+          {
+            $set: {
+              candidateId:
+                user.userId,
+
+              guestSessionId:
+                null,
+            },
+          }
+        );
+
+      console.log(
+        "Guest CV link result:",
+        updatedCV
+      );
+    }
+
+    // =====================================================
+    // 10. SEND OTP EMAIL
+    // =====================================================
 
     await sendEmail({
-  to: email,
-  subject: "Your SkillfulJobs.ai verification code",
-  html: otpEmailTemplate(otp),
-});
+      to: email,
+
+      subject:
+        "Your SkillfulJobs.ai verification code",
+
+      html:
+        otpEmailTemplate(otp),
+    });
+
+    // =====================================================
+    // 11. RESPONSE
+    // =====================================================
+
     return res.status(201).json({
       success: true,
-      message: "OTP sent to your email",
-      mongoId: user._id,
-      userId: user.userId,
+
+      message:
+        "OTP sent to your email",
+
+      mongoId:
+        user._id,
+
+      userId:
+        user.userId,
+
+      /*
+       * NEW:
+       * Return company information when this
+       * was a company registration.
+       */
+      companyId:
+        company?._id || null,
     });
+
   } catch (error) {
-  console.error("SignUp error:", error);
+    console.error(
+      "SignUp error:",
+      error
+    );
 
-  if (user?._id) {
-    await User.findByIdAndDelete(user._id);
+    /*
+     * If Company was created but something
+     * failed afterwards, remove it.
+     */
+    if (company?._id) {
+      await Company.findByIdAndDelete(
+        company._id
+      );
+    }
+
+    /*
+     * Existing cleanup behaviour:
+     * remove partially created User.
+     */
+    if (user?._id) {
+      await User.findByIdAndDelete(
+        user._id
+      );
+    }
+
+    if (
+      error.name ===
+        "ValidationError" ||
+      error.statusCode === 400
+    ) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      message:
+        "Signup failed. Please check the detail again.",
+    });
   }
-
-  // Validation errors (bad email, etc.) are the client's fault — say why.
-  if (error.name === "ValidationError" || error.statusCode === 400) {
-    return res.status(400).json({ message: error.message });
-  }
-
-  return res.status(500).json({
-    message: "Signup failed. Please check the detail again.",
-  });
-}
 };
 
 exports.checkEmail = async (req, res) => {
