@@ -468,244 +468,322 @@ const applyForJob = async (req, res) => {
 // ======================================================
 // GET RECOMMENDED CANDIDATES
 // ======================================================
+const getRecommendedCandidates = async (req, res) => {
+  try {
+    /*
+     * Get logged-in company user.
+     */
+    const user = await User.findById(
+      req.user.id
+    ).lean();
 
-const getRecommendedCandidates =
-  async (req, res) => {
-    try {
+    if (
+      !user ||
+      user.role !== "company"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Only companies can view recommended candidates",
+      });
+    }
+
+    /*
+     * Company users must belong to
+     * an actual Company.
+     */
+    if (!user.companyId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Your account is not linked to a company",
+      });
+    }
+
+    /*
+     * Get all currently available jobs
+     * belonging to this company.
+     *
+     * All recruiters in the same company
+     * share the same companyId.
+     */
+    const jobs = await Job.find({
+      companyId: user.companyId,
+
+      status: "Open",
+
+      applicationEndDate: {
+        $gte: new Date(),
+      },
+
       /*
-       * Get logged-in company user.
+       * Only jobs that still have
+       * available vacancies.
        */
-      const user = await User.findById(
-        req.user.id
-      ).lean();
+      $expr: {
+        $lt: [
+          "$filledPositions",
+          "$vacancies",
+        ],
+      },
+    }).lean();
 
-      if (
-        !user ||
-        user.role !== "company"
-      ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "Only companies can view recommended candidates",
-        });
-      }
+    /*
+     * Get applications belonging
+     * to this company.
+     *
+     * Used to prevent recommending
+     * someone who already applied
+     * for the same job.
+     */
+    const applications =
+      await Application.find({
+        companyId: user.companyId,
+      }).lean();
 
+    /*
+     * Only candidates who allow
+     * recruiter discovery.
+     *
+     * availableForWork:false
+     * hides them from recommendations,
+     * but does NOT prevent them
+     * from applying manually.
+     */
+    const candidates =
+      await User.find({
+        role: "candidate",
 
-      if (!user.companyId) {
-        return res.status(400).json({
-          success: false,
-
-          message:
-            "Your account is not linked to a company",
-        });
-      }
-
-
-      const jobs = await Job.find({
-        companyId:
-          user.companyId,
-
-        status:
-          "Open",
-
-        applicationEndDate: {
-          $gte: new Date(),
-        },
-
-        $expr: {
-          $lt: [
-            "$filledPositions",
-            "$vacancies",
-          ],
+        availableForWork: {
+          $ne: false,
         },
       }).lean();
 
-      const applications =
-        await Application.find({
-          companyId:
-            user.companyId,
-        }).lean();
+    /*
+     * Candidates accepted anywhere
+     * on the platform should no longer
+     * appear in recruiter recommendations.
+     */
+    const acceptedCandidateIds =
+      new Set(
+        (
+          await Application.distinct(
+            "candidateId",
+            {
+              status: "accepted",
+            }
+          )
+        ).map(Number)
+      );
 
- 
-      const candidates =
-        await User.find({
-          role:
-            "candidate",
+    const results = [];
 
-          availableForWork: {
-            $ne: false,
-          },
-        }).lean();
-
-      const acceptedCandidateIds =
-        new Set(
-          (
-            await Application.distinct(
-              "candidateId",
-              {
-                status:
-                  "accepted",
-              }
-            )
-          ).map(Number)
-        );
-
-      const results = [];
-
-      for (const job of jobs) {
-        for (
-          const candidate
-          of candidates
+    /*
+     * Compare every available candidate
+     * against every available company job.
+     */
+    for (const job of jobs) {
+      for (const candidate of candidates) {
+        /*
+         * Don't recommend candidates
+         * already accepted elsewhere.
+         */
+        if (
+          acceptedCandidateIds.has(
+            Number(candidate.userId)
+          )
         ) {
-   
-          if (
-            acceptedCandidateIds.has(
-              Number(
-                candidate.userId
-              )
-            )
-          ) {
-            continue;
-          }
-          const alreadyApplied =
-            applications.some(
-              (app) =>
-                Number(
-                  app.candidateId
-                ) ===
-                  Number(
-                    candidate.userId
-                  ) &&
-                app.jobId.toString() ===
-                  job._id.toString()
-            );
+          continue;
+        }
 
-          if (alreadyApplied) {
-            continue;
-          }
-
-          /*
-           * Find candidate's newest CV.
-           */
-          const cv =
-            await CV.findOne({
-              candidateId:
-                candidate.userId,
-            })
-              .sort({
-                version: -1,
-              })
-              .lean();
-
-          if (!cv) {
-            continue;
-          }
-
-        const candidateSkillDoc =
-  await Skill.findOne({
-    candidateId: candidate.userId,
-  }).lean();
-
-if (!candidateSkillDoc) {
-  continue;
-}
-
-const candidateSkills =
-  Array.isArray(candidateSkillDoc.skills)
-    ? candidateSkillDoc.skills.filter(Boolean)
-    : [];
-
-if (candidateSkills.length === 0) {
-  continue;
-}
-
-const jobSkills =
-  Array.isArray(job.keySkills)
-    ? job.keySkills.filter(Boolean)
-    : [];
-
-          const {
-            matchedSkills,
-            missingSkills,
-            locationMatch,
-            matchScore,
-          } = calculateMatch(
-            candidateSkills,
-            jobSkills,
-            candidate.location,
-            job.location
+        /*
+         * Don't recommend someone who
+         * already applied for THIS job.
+         */
+        const alreadyApplied =
+          applications.some(
+            (app) =>
+              Number(app.candidateId) ===
+                Number(candidate.userId) &&
+              app.jobId?.toString() ===
+                job._id.toString()
           );
 
-          if (matchScore === 0) {
-            continue;
-          }
+        if (alreadyApplied) {
+          continue;
+        }
 
-          results.push({
+        /*
+         * Find candidate's newest CV.
+         *
+         * We still need the CV because
+         * recruiters may open/view it.
+         */
+        const cv =
+          await CV.findOne({
             candidateId:
               candidate.userId,
+          })
+            .sort({
+              version: -1,
+            })
+            .lean();
 
-            candidateName:
-              `${candidate.firstName || ""} ${
-                candidate.lastName || ""
-              }`.trim(),
-
-   
-            candidateEmail:
-              candidate.email,
-
-            jobTitle:
-              job.title,
-
-            jobId:
-              job._id,
-
-            cvFilePath:
-              cv.filePath,
-
-            matchScore,
-
-            matchedSkills,
-
-            missingSkills,
-
-            locationMatch,
-
-            contactStatus:
-              "Need to contact",
-          });
+        if (!cv) {
+          continue;
         }
+
+        /*
+         * IMPORTANT:
+         *
+         * Use Skill collection as the
+         * source of truth for matching.
+         *
+         * This is now the same source used
+         * by Recommended Jobs.
+         */
+        const candidateSkillDoc =
+          await Skill.findOne({
+            candidateId:
+              candidate.userId,
+          }).lean();
+
+        if (!candidateSkillDoc) {
+          continue;
+        }
+
+        const candidateSkills =
+          Array.isArray(
+            candidateSkillDoc.skills
+          )
+            ? candidateSkillDoc.skills.filter(
+                Boolean
+              )
+            : [];
+
+        if (
+          candidateSkills.length === 0
+        ) {
+          continue;
+        }
+
+        const jobSkills =
+          Array.isArray(job.keySkills)
+            ? job.keySkills.filter(Boolean)
+            : [];
+
+        /*
+         * Use the SAME shared matching
+         * calculation as Recommended Jobs.
+         */
+        const {
+          matchedSkills,
+          missingSkills,
+          locationMatch,
+          matchScore,
+        } = calculateMatch(
+          candidateSkills,
+          jobSkills,
+          candidate.location,
+          job.location
+        );
+
+        /*
+         * Candidate and JOB must be
+         * in the same country.
+         *
+         * Company location is irrelevant.
+         */
+        if (!locationMatch) {
+          continue;
+        }
+
+        /*
+         * Only recommend candidates
+         * whose final match score
+         * is greater than 50%.
+         */
+        if (matchScore <= 50) {
+          continue;
+        }
+
+        /*
+         * Add candidate recommendation.
+         */
+        results.push({
+          candidateId:
+            candidate.userId,
+
+          candidateName:
+            `${
+              candidate.firstName || ""
+            } ${
+              candidate.lastName || ""
+            }`.trim(),
+
+          /*
+           * TEMPORARY:
+           *
+           * We'll remove this during
+           * Candidate Privacy work.
+           */
+          candidateEmail:
+            candidate.email,
+
+          jobTitle:
+            job.title,
+
+          jobId:
+            job._id,
+
+          cvFilePath:
+            cv.filePath,
+
+          matchScore,
+
+          matchedSkills,
+
+          missingSkills,
+
+          locationMatch,
+
+          contactStatus:
+            "Need to contact",
+        });
       }
-
-      /*
-       * Highest match first.
-       */
-      results.sort(
-        (a, b) =>
-          b.matchScore -
-          a.matchScore
-      );
-
-      return res.status(200).json({
-        success: true,
-
-        count:
-          results.length,
-
-        candidates:
-          results,
-      });
-    } catch (error) {
-      console.error(
-        "Recommended Candidates Error:",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message: "Server Error",
-      });
     }
-  };
+
+    /*
+     * Highest match score first.
+     */
+    results.sort(
+      (a, b) =>
+        b.matchScore -
+        a.matchScore
+    );
+
+    return res.status(200).json({
+      success: true,
+
+      count:
+        results.length,
+
+      candidates:
+        results,
+    });
+  } catch (error) {
+    console.error(
+      "Recommended Candidates Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server Error",
+    });
+  }
+};
 
 // ======================================================
 // GET APPLICATIONS

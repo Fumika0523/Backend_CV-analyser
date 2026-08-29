@@ -518,6 +518,9 @@ exports.deleteJobPost = async (
       });
     }
 
+    /*
+     * NEW company ownership check.
+     */
     if (
       job.companyId.toString() !==
       user.companyId.toString()
@@ -587,19 +590,117 @@ const normalizeCountry = (country) => {
 };
 
 
-// ======================================================
-// HELPER: NORMALIZE SKILLS
-// ======================================================
-
 const normalizeSkill = (skill) => {
-  return skill
-    ?.toString()
+  return String(skill || "")
     .toLowerCase()
     .replace(/\./g, "")
     .replace(/\s+/g, "")
     .trim();
 };
+const calculateMatch = (
+  candidateSkills = [],
+  jobSkills = [],
+  candidateLocation,
+  jobLocation
+) => {
+  const normalizedCandidateSkills =
+    candidateSkills
+      .map(normalizeSkill)
+      .filter(Boolean);
 
+  const isSkillMatch = (
+    candidateSkill,
+    jobSkill
+  ) => {
+    const candidate =
+      normalizeSkill(candidateSkill);
+
+    const job =
+      normalizeSkill(jobSkill);
+
+    if (!candidate || !job) {
+      return false;
+    }
+
+    if (candidate === job) {
+      return true;
+    }
+
+    if (
+      candidate.length < 3 ||
+      job.length < 3
+    ) {
+      return false;
+    }
+
+    return (
+      candidate.includes(job) ||
+      job.includes(candidate)
+    );
+  };
+
+  const matchedSkills =
+    jobSkills.filter((jobSkill) =>
+      normalizedCandidateSkills.some(
+        (candidateSkill) =>
+          isSkillMatch(
+            candidateSkill,
+            jobSkill
+          )
+      )
+    );
+
+  const missingSkills =
+    jobSkills.filter(
+      (jobSkill) =>
+        !normalizedCandidateSkills.some(
+          (candidateSkill) =>
+            isSkillMatch(
+              candidateSkill,
+              jobSkill
+            )
+        )
+    );
+
+  const candidateCountry =
+    normalizeCountry(
+      candidateLocation?.country
+    );
+
+  const jobCountry =
+    normalizeCountry(
+      jobLocation?.country
+    );
+
+  const locationMatch = Boolean(
+    candidateCountry &&
+      jobCountry &&
+      candidateCountry === jobCountry
+  );
+
+  const skillScore =
+    jobSkills.length > 0
+      ? (matchedSkills.length /
+          jobSkills.length) *
+        80
+      : 0;
+
+  const locationScore =
+    locationMatch ? 20 : 0;
+
+  const matchScore =
+    Math.round(
+      skillScore +
+        locationScore
+    );
+
+  return {
+    matchedSkills,
+    missingSkills,
+    locationMatch,
+    matchScore,
+  };
+};
 
 // ======================================================
 // GET MATCHED CANDIDATES FOR COMPANY JOB
@@ -961,14 +1062,12 @@ exports.getMatchedJobsForCompany = async (
   }
 };
 
+
 // ======================================================
 // GET MATCHED JOBS FOR CANDIDATE
 // ======================================================
 exports.getMatchedJobsForCandidate = async (req, res) => {
   try {
-    /*
-     * Get logged-in candidate.
-     */
     const user = await User.findById(req.user.id);
 
     if (!user || user.role !== "candidate") {
@@ -977,11 +1076,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       });
     }
 
-    /*
-     * Get candidate skills from Skill collection.
-     *
-     * Skill.candidateId still uses numeric User.userId.
-     */
     const candidateSkillDoc = await Skill.findOne({
       candidateId: user.userId,
     });
@@ -998,10 +1092,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       ? candidateSkillDoc.skills.filter(Boolean)
       : [];
 
-    /*
-     * If the candidate has no usable skills,
-     * there is nothing to match.
-     */
     if (candidateSkills.length === 0) {
       return res.status(200).json({
         matchedJobs: [],
@@ -1011,9 +1101,8 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     const currentDate = new Date();
 
     /*
-     * Get jobs the candidate has already applied for.
-     *
-     * Recommended Jobs should not show them again.
+     * Jobs already applied for should not
+     * appear in Recommended Jobs.
      */
     const appliedApplications = await Application.find({
       candidateId: user.userId,
@@ -1023,9 +1112,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       (application) => application.jobId
     );
 
-    /*
-     * Find currently available jobs.
-     */
     const jobs = await Job.find({
       status: "Open",
 
@@ -1033,16 +1119,10 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         $gte: currentDate,
       },
 
-      /*
-       * Exclude jobs already applied for.
-       */
       _id: {
         $nin: appliedJobIds,
       },
 
-      /*
-       * Only jobs that still have vacancies.
-       */
       $expr: {
         $lt: [
           "$filledPositions",
@@ -1050,9 +1130,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         ],
       },
     })
-      /*
-       * companyId now references CompanyModel.
-       */
       .populate(
         "companyId",
         "companyName companyUrl location isActive"
@@ -1061,13 +1138,10 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
 
     const results = [];
 
-    /*
-     * Compare candidate against every available job.
-     */
     for (const job of jobs) {
       /*
-       * Do not recommend jobs belonging
-       * to a deactivated company.
+       * Don't recommend jobs from
+       * inactive companies.
        */
       if (
         job.companyId &&
@@ -1076,19 +1150,13 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         continue;
       }
 
-      const jobSkills = Array.isArray(job.keySkills)
-        ? job.keySkills.filter(Boolean)
-        : [];
+      const jobSkills =
+        Array.isArray(job.keySkills)
+          ? job.keySkills.filter(Boolean)
+          : [];
 
       /*
-       * Use ONE shared matching function.
-       *
-       * calculateMatch handles:
-       *
-       * - skill matching
-       * - missing skills
-       * - country matching
-       * - final match score
+       * Use the shared matching system.
        */
       const {
         matchedSkills,
@@ -1103,24 +1171,21 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       );
 
       /*
-       * Candidate and job must be
-       * in the same country.
+       * Candidate must be in the
+       * same country as the JOB.
        */
       if (!locationMatch) {
         continue;
       }
 
       /*
-       * Only recommend jobs with
-       * more than 50% match.
+       * Only recommend matches
+       * above 50%.
        */
       if (matchScore <= 50) {
         continue;
       }
 
-      /*
-       * Add recommended job.
-       */
       results.push({
         jobId: job._id,
 
@@ -1158,7 +1223,7 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     }
 
     /*
-     * Highest match appears first.
+     * Best matches first.
      */
     const sortedResults = results.sort(
       (a, b) =>
@@ -1176,7 +1241,8 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     );
 
     return res.status(500).json({
-      message: "Failed to fetch matched jobs",
+      message:
+        "Failed to fetch matched jobs",
     });
   }
 };
