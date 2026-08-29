@@ -51,13 +51,7 @@ const jobSchema = new mongoose.Schema(
       required: true,
     },
 
-    /*
-     * Records WHICH recruiter created the job.
-     *
-     * Example:
-     * companyId = Google
-     * createdBy = Alice
-     */
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -65,12 +59,6 @@ const jobSchema = new mongoose.Schema(
     },
 
     title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    companyUrl: {
       type: String,
       required: true,
       trim: true,
@@ -121,16 +109,6 @@ const jobSchema = new mongoose.Schema(
       default: [],
     },
 
-    /*
-     * Job location is different from
-     * Company.location.
-     *
-  Company: ABC Recruitment Ltd
-Company office: London
-
-Job: Software Engineer
-Actual workplace: Manchester
-     */
     location: {
       city: {
         type: String,

@@ -3,182 +3,219 @@ const Skill = require("../Model/skillsModel");
 const User = require("../Model/UserModel");
 const CV = require("../Model/CVModel");
 const Application = require("../Model/applicationModel");
+const Company = require("../Model/companyModel");
 
 
-// ======================================================
 // CREATE JOB POST
-// ======================================================
-exports.createJobPost = async (req, res) => {
-  try {
-    /*
-     * req.user comes from the JWT.
-     *
-     * Your JWT contains:
-     * {
-     *   id: user._id,
-     *   role: user.role
-     * }
-     */
-    if (req.user.role !== "company") {
-      return res.status(403).json({
-        message: "Only company users can post jobs",
-      });
+exports.createJobPost =
+  async (req, res) => {
+    try {
+      if (
+        req.user.role !==
+        "company"
+      ) {
+        return res
+          .status(403)
+          .json({
+            message:
+              "Only company users can post jobs",
+          });
+      }
+
+      const user =
+        await User.findById(
+          req.user.id
+        );
+
+      if (!user) {
+        return res
+          .status(404)
+          .json({
+            message:
+              "User not found",
+          });
+      }
+
+      if (!user.companyId) {
+        return res
+          .status(400)
+          .json({
+            message:
+              "Your account is not linked to a company.",
+          });
+      }
+
+
+      const company =
+        await Company.findById(
+          user.companyId
+        );
+
+      if (!company) {
+        return res
+          .status(404)
+          .json({
+            message:
+              "Company not found",
+          });
+      }
+
+      const {
+        title,
+        jobType,
+        workMode,
+        education,
+        experience,
+        keySkills,
+        location,
+        companyUrl,
+        responsibilities,
+        roleSummary,
+        compensationBenefits,
+        requirements,
+        category,
+        industry,
+        applicationEndDate,
+        salary,
+        vacancies,
+      } = req.body;
+
+      if (
+        !company.companyUrl
+          ?.trim()
+      ) {
+        const submittedUrl =
+          companyUrl?.trim();
+
+        if (!submittedUrl) {
+          return res
+            .status(400)
+            .json({
+              message:
+                "Please add your company website before posting a job.",
+            });
+        }
+
+        try {
+          const parsedUrl =
+            new URL(
+              submittedUrl
+            );
+
+          if (
+            ![
+              "http:",
+              "https:",
+            ].includes(
+              parsedUrl.protocol
+            )
+          ) {
+            throw new Error(
+              "Invalid protocol"
+            );
+          }
+        } catch {
+          return res
+            .status(400)
+            .json({
+              message:
+                "Please enter a valid company website URL.",
+            });
+        }
+
+        company.companyUrl =
+          submittedUrl;
+
+        await company.save();
+      }
+
+      let formattedLocation =
+        location;
+
+      if (
+        typeof location ===
+        "string"
+      ) {
+        const [
+          city,
+          country,
+        ] = location
+          .split(",")
+          .map(
+            (item) =>
+              item.trim()
+          );
+
+        formattedLocation = {
+          city:
+            city || "",
+
+          country:
+            country || "",
+        };
+      }
+
+      const job =
+        await Job.create({
+
+          companyId:
+            company._id,
+
+
+          createdBy:
+            user._id,
+
+          title,
+          jobType,
+          workMode,
+          education,
+          experience,
+          keySkills,
+          location:
+            formattedLocation,
+          responsibilities,
+          roleSummary,
+          compensationBenefits,
+          requirements,
+          category,
+          industry,
+
+          applicationEndDate,
+          salary,
+
+          vacancies:
+            Number(
+              vacancies
+            ) || 1,
+
+          filledPositions:
+            0,
+        });
+
+
+      return res
+        .status(201)
+        .json({
+          message:
+            "Job created successfully",
+
+          job,
+        });
+    } catch (error) {
+      console.error(
+        "Create job error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          message:
+            error.message ||
+            "Server error",
+        });
     }
-
-    /*
-     * NEW:
-     *
-     * We now need the full User document because
-     * req.user.id is the USER ID, not the COMPANY ID.
-     *
-     * We need user.companyId to know which Company
-     * owns the job.
-     */
-    const user = await User.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
-    }
-
-    /*
-     * Safety check.
-     *
-     * Every company user should now be connected
-     * to a Company document.
-     */
-    if (!user.companyId) {
-      return res.status(400).json({
-        message:
-          "Your account is not linked to a company.",
-      });
-    }
-
-    const {
-      title,
-      jobType,
-      workMode,
-      education,
-      experience,
-      keySkills,
-      location,
-      companyUrl,
-      responsibilities,
-      roleSummary,
-      compensationBenefits,
-      requirements,
-
-      /*
-       * FIX:
-       *
-       * These fields exist in JobModel and are required,
-       * but your previous controller wasn't saving them.
-       */
-      category,
-      industry,
-
-      applicationEndDate,
-      salary,
-      vacancies,
-    } = req.body;
-
-    /*
-     * Your frontend may sometimes send:
-     *
-     * "Manchester, United Kingdom"
-     *
-     * rather than:
-     *
-     * {
-     *   city: "Manchester",
-     *   country: "United Kingdom"
-     * }
-     *
-     * Keep supporting both formats.
-     */
-    let formattedLocation = location;
-
-    if (typeof location === "string") {
-      const [city, country] = location
-        .split(",")
-        .map((item) => item.trim());
-
-      formattedLocation = {
-        city: city || "",
-        country: country || "",
-      };
-    }
-
-    /*
-     * NEW OWNERSHIP STRUCTURE
-     *
-     * OLD:
-     *
-     * companyId = req.user.id
-     *
-     * This meant:
-     * companyId -> User._id
-     *
-     *
-     * NEW:
-     *
-     * companyId -> Company._id
-     * createdBy -> User._id
-     *
-     * Example:
-     *
-     * companyId = ABC Recruitment
-     * createdBy = Alice
-     */
-    const job = await Job.create({
-      companyId: user.companyId,
-
-      createdBy: user._id,
-
-      title,
-      jobType,
-      workMode,
-      education,
-      experience,
-      keySkills,
-
-      location: formattedLocation,
-
-      companyUrl,
-      responsibilities,
-      roleSummary,
-      compensationBenefits,
-      requirements,
-
-      category,
-      industry,
-
-      applicationEndDate,
-      salary,
-
-      vacancies:
-        Number(vacancies) || 1,
-
-      filledPositions: 0,
-    });
-
-    return res.status(201).json({
-      message: "Job created successfully",
-      job,
-    });
-  } catch (error) {
-    console.error(
-      "Create job error:",
-      error
-    );
-
-    return res.status(500).json({
-      message:
-        error.message || "Server error",
-    });
-  }
-};
+  };
 
 
 // ======================================================
@@ -195,17 +232,6 @@ exports.getAllJobPosts = async (req, res) => {
         $gte: currentDate,
       },
 
-      /*
-       * Only return jobs that still have
-       * vacancies available.
-       *
-       * Example:
-       *
-       * vacancies = 3
-       * filledPositions = 2
-       *
-       * 2 < 3 -> show job
-       */
       $expr: {
         $lt: [
           "$filledPositions",
@@ -214,29 +240,13 @@ exports.getAllJobPosts = async (req, res) => {
       },
     })
 
-      /*
-       * CHANGED:
-       *
-       * companyId now references Company,
-       * not User.
-       *
-       * OLD:
-       * firstName lastName companyName email
-       *
-       * NEW:
-       * company information comes from CompanyModel.
-       */
+
       .populate(
         "companyId",
         "companyName companyDescription companyUrl location isActive"
       )
 
-      /*
-       * createdBy points to the recruiter.
-       *
-       * We don't really need to expose this publicly,
-       * so we're not populating it here.
-       */
+
       .sort({
         createdAt: -1,
       })
@@ -272,12 +282,6 @@ exports.getMyCompanyJobPosts = async (
       });
     }
 
-    /*
-     * NEW:
-     *
-     * Find the logged-in recruiter so we
-     * can get their Company._id.
-     */
     const user = await User.findById(
       req.user.id
     );
@@ -295,24 +299,6 @@ exports.getMyCompanyJobPosts = async (
       });
     }
 
-    /*
-     * CHANGED:
-     *
-     * OLD:
-     *
-     * companyId: req.user.id
-     *
-     * That showed only jobs posted by this
-     * specific recruiter.
-     *
-     *
-     * NEW:
-     *
-     * companyId: user.companyId
-     *
-     * All recruiters belonging to the same
-     * Company can see the company's jobs.
-     */
     const jobs = await Job.find({
       companyId: user.companyId,
     })
@@ -351,12 +337,6 @@ exports.getSingleJobPost = async (
       req.params.id
     )
 
-      /*
-       * CHANGED:
-       *
-       * companyId now gives us the Company,
-       * not the recruiter.
-       */
       .populate(
         "companyId",
         "companyName companyDescription companyUrl location"
@@ -390,9 +370,7 @@ exports.updateJobPost = async (
   res
 ) => {
   try {
-    /*
-     * Find logged-in company user first.
-     */
+  
     const user = await User.findById(
       req.user.id
     );
@@ -424,20 +402,6 @@ exports.updateJobPost = async (
       });
     }
 
-    /*
-     * IMPORTANT SECURITY CHANGE:
-     *
-     * OLD:
-     *
-     * job.companyId === req.user.id
-     *
-     * NEW:
-     *
-     * job.companyId === user.companyId
-     *
-     * This checks whether the job belongs
-     * to the logged-in user's COMPANY.
-     */
     if (
       job.companyId.toString() !==
       user.companyId.toString()
@@ -448,34 +412,14 @@ exports.updateJobPost = async (
       });
     }
 
-    /*
-     * Copy submitted editable fields.
-     */
     const updateData = {
       ...req.body,
     };
 
-    /*
-     * SECURITY:
-     *
-     * The frontend must NEVER be able to change
-     * which company owns a job.
-     */
     delete updateData.companyId;
 
-    /*
-     * The frontend also shouldn't be able
-     * to pretend another recruiter created it.
-     */
     delete updateData.createdBy;
 
-    /*
-     * filledPositions is controlled by
-     * application acceptance logic.
-     *
-     * Do not allow the normal Edit Job form
-     * to modify it.
-     */
     delete updateData.filledPositions;
 
     if (
@@ -485,9 +429,6 @@ exports.updateJobPost = async (
         Number(updateData.vacancies) || 1;
     }
 
-    /*
-     * Continue supporting string location.
-     */
     if (
       typeof updateData.location ===
       "string"
@@ -512,16 +453,6 @@ exports.updateJobPost = async (
         {
           new: true,
 
-          /*
-           * Important because fields such as:
-           *
-           * category
-           * industry
-           * jobType
-           * workMode
-           *
-           * have enums / validation rules.
-           */
           runValidators: true,
         }
       );
@@ -555,18 +486,6 @@ exports.deleteJobPost = async (
   res
 ) => {
   try {
-    /*
-     * Despite the function being called
-     * deleteJobPost, your system does NOT
-     * physically delete the job.
-     *
-     * It changes:
-     *
-     * status -> Closed
-     *
-     * I like keeping this behaviour because
-     * applications/history remain intact.
-     */
 
     const user = await User.findById(
       req.user.id
@@ -599,9 +518,6 @@ exports.deleteJobPost = async (
       });
     }
 
-    /*
-     * NEW company ownership check.
-     */
     if (
       job.companyId.toString() !==
       user.companyId.toString()
@@ -674,10 +590,15 @@ const normalizeCountry = (country) => {
 // ======================================================
 // HELPER: NORMALIZE SKILLS
 // ======================================================
-const normalizeSkill = (skill) =>
-  String(skill || "")
+
+const normalizeSkill = (skill) => {
+  return skill
+    ?.toString()
     .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, "")
     .trim();
+};
 
 
 // ======================================================
@@ -1046,9 +967,7 @@ exports.getMatchedJobsForCompany = async (
 exports.getMatchedJobsForCandidate = async (req, res) => {
   try {
     /*
-     * Get the logged-in candidate.
-     *
-     * req.user.id = MongoDB User._id from JWT.
+     * Get logged-in candidate.
      */
     const user = await User.findById(req.user.id);
 
@@ -1059,15 +978,9 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     }
 
     /*
-     * Get the skills extracted from this candidate's CV.
+     * Get candidate skills from Skill collection.
      *
-     * IMPORTANT:
-     * Skill collection still uses the numeric:
-     *
-     * candidateId = user.userId
-     *
-     * We are intentionally keeping this unchanged
-     * during the Company architecture migration.
+     * Skill.candidateId still uses numeric User.userId.
      */
     const candidateSkillDoc = await Skill.findOne({
       candidateId: user.userId,
@@ -1086,31 +999,21 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       : [];
 
     /*
-     * Candidate location is compared against
-     * Job.location — NOT Company.location.
-     *
-     * Example:
-     *
-     * Company office = London
-     * Job location   = Manchester
-     *
-     * Matching must use Manchester.
+     * If the candidate has no usable skills,
+     * there is nothing to match.
      */
-    const candidateCountry = normalizeCountry(
-      user.location?.country
-    );
+    if (candidateSkills.length === 0) {
+      return res.status(200).json({
+        matchedJobs: [],
+      });
+    }
 
     const currentDate = new Date();
 
     /*
-     * Find jobs this candidate has already applied for.
+     * Get jobs the candidate has already applied for.
      *
-     * These jobs should not appear again in
-     * Recommended Jobs.
-     *
-     * NOTE:
-     * This is different from All Jobs / Latest Jobs,
-     * where applied jobs can remain visible.
+     * Recommended Jobs should not show them again.
      */
     const appliedApplications = await Application.find({
       candidateId: user.userId,
@@ -1122,10 +1025,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
 
     /*
      * Find currently available jobs.
-     *
-     * NEW:
-     * companyId now references CompanyModel,
-     * so we populate company information here.
      */
     const jobs = await Job.find({
       status: "Open",
@@ -1135,22 +1034,14 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       },
 
       /*
-       * Don't recommend jobs already applied for.
+       * Exclude jobs already applied for.
        */
       _id: {
         $nin: appliedJobIds,
       },
 
       /*
-       * Don't recommend a job if all vacancies
-       * have already been filled.
-       *
-       * Example:
-       *
-       * filledPositions = 2
-       * vacancies = 2
-       *
-       * Job should not appear.
+       * Only jobs that still have vacancies.
        */
       $expr: {
         $lt: [
@@ -1160,10 +1051,7 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
       },
     })
       /*
-       * CHANGED:
-       *
-       * Job.companyId now references Company,
-       * not User.
+       * companyId now references CompanyModel.
        */
       .populate(
         "companyId",
@@ -1174,13 +1062,12 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     const results = [];
 
     /*
-     * Check every available job against
-     * the candidate's CV skills.
+     * Compare candidate against every available job.
      */
     for (const job of jobs) {
       /*
-       * If the company has been deactivated,
-       * don't recommend its jobs.
+       * Do not recommend jobs belonging
+       * to a deactivated company.
        */
       if (
         job.companyId &&
@@ -1194,110 +1081,55 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         : [];
 
       /*
-       * Compare candidate country with JOB country.
-       */
-      const jobCountry = normalizeCountry(
-        job.location?.country
-      );
-
-      const locationMatched = Boolean(
-        candidateCountry &&
-          jobCountry &&
-          candidateCountry === jobCountry
-      );
-
-      /*
-       * Find skills that approximately match.
+       * Use ONE shared matching function.
        *
-       * Example:
+       * calculateMatch handles:
        *
-       * Candidate: "React.js"
-       * Job:       "React"
+       * - skill matching
+       * - missing skills
+       * - country matching
+       * - final match score
        */
-      const matchedSkills = jobSkills.filter(
-        (jobSkill) => {
-          const normalizedJobSkill =
-            normalizeSkill(jobSkill);
-
-          return candidateSkills.some(
-            (candidateSkill) => {
-              const normalizedCandidateSkill =
-                normalizeSkill(candidateSkill);
-
-              return (
-                normalizedCandidateSkill ===
-                  normalizedJobSkill ||
-                normalizedCandidateSkill.includes(
-                  normalizedJobSkill
-                ) ||
-                normalizedJobSkill.includes(
-                  normalizedCandidateSkill
-                )
-              );
-            }
-          );
-        }
+      const {
+        matchedSkills,
+        missingSkills,
+        locationMatch,
+        matchScore,
+      } = calculateMatch(
+        candidateSkills,
+        jobSkills,
+        user.location,
+        job.location
       );
 
       /*
-       * Calculate skill match percentage.
-       *
-       * Example:
-       *
-       * Job requires 4 skills
-       * Candidate matches 3
-       *
-       * 3 / 4 * 100 = 75%
+       * Candidate and job must be
+       * in the same country.
        */
-      const matchScore =
-        jobSkills.length > 0
-          ? Math.round(
-              (matchedSkills.length /
-                jobSkills.length) *
-                100
-            )
-          : 0;
-
-      /*
-       * Business rules:
-       *
-       * 1. Candidate must have some matching skills.
-       * 2. Candidate must be in the same country.
-       * 3. Match must be greater than 50%.
-       */
-      if (matchScore === 0) {
+      if (!locationMatch) {
         continue;
       }
 
-      if (!locationMatched) {
-        continue;
-      }
-
+      /*
+       * Only recommend jobs with
+       * more than 50% match.
+       */
       if (matchScore <= 50) {
         continue;
       }
 
       /*
-       * Add the recommended job to the response.
+       * Add recommended job.
        */
       results.push({
         jobId: job._id,
 
         title: job.title,
 
-        /*
-         * NEW:
-         * Company name now comes from CompanyModel.
-         */
         companyName:
-          job.companyId?.companyName || "Company",
+          job.companyId?.companyName ||
+          "Company",
 
-        /*
-         * We temporarily still store companyUrl
-         * on JobModel.
-         *
-         * If it isn't there, use the Company value.
-         */
         companyUrl:
           job.companyUrl ||
           job.companyId?.companyUrl ||
@@ -1317,15 +1149,21 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
 
         matchedSkills,
 
+        missingSkills,
+
+        locationMatch,
+
         matchScore,
       });
     }
 
     /*
-     * Highest match score appears first.
+     * Highest match appears first.
      */
     const sortedResults = results.sort(
-      (a, b) => b.matchScore - a.matchScore
+      (a, b) =>
+        b.matchScore -
+        a.matchScore
     );
 
     return res.status(200).json({
@@ -1343,18 +1181,13 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
   }
 };
 
-
 // ======================================================
 // GET MATCHED JOBS FOR GUEST
 // ======================================================
 exports.getMatchedJobsForGuest = async (req, res) => {
   try {
-    /*
-     * Guests don't have a User account yet.
-     *
-     * Their uploaded CV is temporarily connected
-     * using guestSessionId.
-     */
+
+
     const { guestSessionId } = req.query;
 
     if (!guestSessionId) {
@@ -1363,9 +1196,6 @@ exports.getMatchedJobsForGuest = async (req, res) => {
       });
     }
 
-    /*
-     * Get skills extracted from the guest CV.
-     */
     const guestSkill = await Skill.findOne({
       guestSessionId,
     });

@@ -38,16 +38,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    /*
-     * If this user belongs to a company,
-     * this points to the real Company document.
-     *
-     * Candidate:
-     * companyId = null
-     *
-     * Recruiter:
-     * companyId = Company._id
-     */
+
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
@@ -65,17 +56,7 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    /*
-     * TEMPORARY LEGACY FIELDS.
-     *
-     * Do NOT remove these yet.
-     *
-     * Existing signup/profile/frontend code
-     * still uses them.
-     *
-     * Once CompanyModel migration is complete,
-     * we will remove them.
-     */
+
     companyName: {
       type: String,
       required: false,
@@ -104,12 +85,7 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    /*
-     * Candidate availability.
-     *
-     * Candidate -> true by default
-     * Company   -> false by default
-     */
+
     availableForWork: {
       type: Boolean,
 

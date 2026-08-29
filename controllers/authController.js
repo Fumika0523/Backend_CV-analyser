@@ -23,10 +23,6 @@ const generateToken = (user) => {
 //req = request from frontend
 //res= response back to frontend
 exports.signUp = async (req, res) => {
-  /*
-   * Keep references outside try so that if something
-   * fails later, we can clean up created records.
-   */
   let user;
   let company;
 
@@ -34,26 +30,19 @@ exports.signUp = async (req, res) => {
     const {
       firstName,
       lastName,
-
       // User-entered email before validation.
       email: rawEmail,
-
       password,
       role,
       phoneNumber,
-
-      /*
-       * These are used only when role === "company".
-       */
+      companyUrl,
       companyName,
       companyDescription,
-
+      companySize,
+      companyType,
       location,
+      guestSessionId,
     } = req.body;
-
-    // =====================================================
-    // 1. VALIDATE EMAIL
-    // =====================================================
 
     const emailValidation =
       await validateEmailForOtp(rawEmail);
@@ -75,10 +64,6 @@ exports.signUp = async (req, res) => {
     // Use normalized / cleaned email.
     const email = emailValidation.email;
 
-    // =====================================================
-    // 2. CHECK FOR EXISTING USER
-    // =====================================================
-
     const userExists = await User.findOne({
       $or: [
         { email },
@@ -93,9 +78,6 @@ exports.signUp = async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 3. VALIDATE COMPANY REGISTRATION
-    // =====================================================
 
     /*
      * A company user must provide a company name
@@ -111,10 +93,7 @@ exports.signUp = async (req, res) => {
       });
     }
 
-    // =====================================================
-    // 4. HASH PASSWORD
-    // =====================================================
-
+    // Hash password
     const salt =
       await bcrypt.genSalt(10);
 
@@ -124,18 +103,11 @@ exports.signUp = async (req, res) => {
         salt
       );
 
-    // =====================================================
-    // 5. CREATE OTP + NUMERIC USER ID
-    // =====================================================
-
     const otp = generateOTP();
 
     const userId =
       await getNextSequence("userId");
 
-    // =====================================================
-    // 6. PREPARE USER
-    // =====================================================
 
     const userData = {
       userId,
@@ -157,7 +129,6 @@ exports.signUp = async (req, res) => {
     };
 
     /*
-     * TEMPORARY:
      *
      * Keep these legacy User fields while the rest
      * of your frontend is still being migrated.
@@ -173,9 +144,6 @@ exports.signUp = async (req, res) => {
         companyDescription || "";
     }
 
-    // =====================================================
-    // 7. CREATE USER FIRST
-    // =====================================================
 
     /*
      * We create the User first because Company.createdBy
@@ -185,9 +153,6 @@ exports.signUp = async (req, res) => {
       userData
     );
 
-    // =====================================================
-    // 8. CREATE COMPANY FOR FIRST COMPANY USER
-    // =====================================================
 
     if (role === "company") {
       /*
@@ -204,13 +169,14 @@ exports.signUp = async (req, res) => {
 
           companyDescription:
             companyDescription || "",
+          companyUrl:
+            companyUrl?.trim() || "",
+          companySize:
+            companySize || "",
 
-          /*
-           * Company location = company / recruiter
-           * organisation's main location.
-           *
-           * This is separate from individual Job.location.
-           */
+          companyType:
+            companyType || "",
+
           location: {
             city:
               location?.city || "",
@@ -219,37 +185,21 @@ exports.signUp = async (req, res) => {
               location?.country || "",
           },
 
-          /*
-           * Alice is the user creating this company.
-           */
+
           createdBy:
             user._id,
         });
 
-      /*
-       * Connect the user back to the newly
-       * created Company.
-       */
+
       user.companyId =
         company._id;
 
-      /*
-       * The first person creating the company
-       * becomes the  company_admin.
-       */
       user.companyRole =
         "company_admin";
 
       await user.save();
     }
 
-    // =====================================================
-    // 9. LINK GUEST CV FOR CANDIDATE
-    // =====================================================
-
-    /*
-     * Only candidate accounts use the guest CV flow.
-     */
     if (
       role === "candidate" &&
       req.body.guestSessionId
@@ -277,10 +227,6 @@ exports.signUp = async (req, res) => {
       );
     }
 
-    // =====================================================
-    // 10. SEND OTP EMAIL
-    // =====================================================
-
     await sendEmail({
       to: email,
 
@@ -291,9 +237,6 @@ exports.signUp = async (req, res) => {
         otpEmailTemplate(otp),
     });
 
-    // =====================================================
-    // 11. RESPONSE
-    // =====================================================
 
     return res.status(201).json({
       success: true,
@@ -307,11 +250,6 @@ exports.signUp = async (req, res) => {
       userId:
         user.userId,
 
-      /*
-       * NEW:
-       * Return company information when this
-       * was a company registration.
-       */
       companyId:
         company?._id || null,
     });
@@ -322,20 +260,12 @@ exports.signUp = async (req, res) => {
       error
     );
 
-    /*
-     * If Company was created but something
-     * failed afterwards, remove it.
-     */
     if (company?._id) {
       await Company.findByIdAndDelete(
         company._id
       );
     }
 
-    /*
-     * Existing cleanup behaviour:
-     * remove partially created User.
-     */
     if (user?._id) {
       await User.findByIdAndDelete(
         user._id
@@ -344,7 +274,7 @@ exports.signUp = async (req, res) => {
 
     if (
       error.name ===
-        "ValidationError" ||
+      "ValidationError" ||
       error.statusCode === 400
     ) {
       return res.status(400).json({
@@ -387,57 +317,178 @@ exports.checkEmail = async (req, res) => {
 };
 
 
-//Verify OTP
+// VERIFY OTP
 exports.verifyOtp = async (req, res) => {
   try {
     const { _id, otp } = req.body;
-    console.log(_id,otp)
+
+    // --------------------------------------------------
+    // 1. Validate request
+    // --------------------------------------------------
+
     if (!_id || !otp) {
       return res.status(400).json({
         message: "_id and otp are required",
       });
     }
 
+    // --------------------------------------------------
+    // 2. Find user
+    // --------------------------------------------------
+
     const user = await User.findById(_id);
 
     if (!user) {
       return res.status(404).json({
-        message: "User not found. Please try signing up or signing in again.",
+        message:
+          "User not found. Please try signing up or signing in again.",
       });
     }
 
-    if (String(user.otp) !== String(otp)) {
+    // --------------------------------------------------
+    // 3. Check whether OTP has expired
+    // --------------------------------------------------
+
+    /*
+     * Check expiry before comparing the OTP.
+     *
+     * Even if the entered code happens to match,
+     * an expired OTP must never be accepted.
+     */
+    if (
+      !user.otpExpiry ||
+      user.otpExpiry < Date.now()
+    ) {
+      return res.status(400).json({
+        message:
+          "OTP expired. Please request a new OTP.",
+      });
+    }
+
+    // --------------------------------------------------
+    // 4. Check OTP
+    // --------------------------------------------------
+
+    if (
+      String(user.otp) !==
+      String(otp)
+    ) {
       return res.status(400).json({
         message: "Invalid OTP",
       });
     }
 
-    if (user.otpExpiry < Date.now()) {
+    // --------------------------------------------------
+    // 5. Extra company account safety check
+    // --------------------------------------------------
+
+    /*
+     * Under the new architecture every company
+     * user must be linked to a Company document.
+     *
+     * Candidate users do not need companyId.
+     */
+    if (
+      user.role === "company" &&
+      !user.companyId
+    ) {
       return res.status(400).json({
-        message: "OTP expired. Please request a new OTP.",
+        message:
+          "Company account is not linked to a company.",
       });
     }
 
+    // --------------------------------------------------
+    // 6. Mark account as verified
+    // --------------------------------------------------
+
     user.isVerified = true;
+
+    /*
+     * OTP should no longer be usable once verification
+     * has succeeded.
+     */
     user.otp = null;
     user.otpExpiry = null;
 
     await user.save();
 
+    // --------------------------------------------------
+    // 7. Generate authentication token
+    // --------------------------------------------------
+
+    const token =
+      generateToken(user);
+
+    // --------------------------------------------------
+    // 8. Return authenticated user
+    // --------------------------------------------------
+
     return res.status(200).json({
       success: true,
-      message: "OTP verified successfully",
-      token: generateToken(user),
+
+      message:
+        "OTP verified successfully",
+
+      token,
+
       user: {
-        _id: user._id,
-        userId: user.userId,
-        name: user.firstName,
-        email: user.email,
-        role: user.role,
+        _id:
+          user._id,
+
+        userId:
+          user.userId,
+
+        firstName:
+          user.firstName,
+
+        lastName:
+          user.lastName,
+
+        /*
+         * Keep name for compatibility with
+         * existing frontend code.
+         */
+        name:
+          `${user.firstName || ""} ${user.lastName || ""
+            }`.trim(),
+
+        email:
+          user.email,
+
+        role:
+          user.role,
+
+        /*
+         * NEW COMPANY ARCHITECTURE
+         *
+         * Candidate:
+         * companyId = null
+         * companyRole = null
+         *
+         * Company:
+         * companyId = Company._id
+         * companyRole = company_admin / recruiter / hiring_manager
+         */
+        companyId:
+          user.companyId || null,
+
+        companyRole:
+          user.companyRole || null,
+
+        /*
+         * Useful for candidate state.
+         */
+        availableForWork:
+          user.availableForWork,
       },
     });
   } catch (error) {
-    console.error("Verify OTP error:", error);
+    console.error(
+      "Verify OTP error:",
+      error
+    );
+
     return res.status(500).json({
       message: "Server error",
     });
@@ -465,10 +516,10 @@ exports.resendOtp = async (req, res) => {
 
     await user.save();
     await sendEmail({
-  to: user.email,
-  subject: "Your SkillfulJobs.ai verification code",
-  html: otpEmailTemplate(otp),
-});
+      to: user.email,
+      subject: "Your SkillfulJobs.ai verification code",
+      html: otpEmailTemplate(otp),
+    });
 
     return res.status(200).json({
       message: "A new OTP has been sent.",
@@ -499,16 +550,16 @@ exports.signIn = async (req, res) => {
     if (!user.isVerified) {
       const otp = generateOTP()
       user.otp = otp
-      user.otpExpiry = Date.now() + 5* 60*1000
+      user.otpExpiry = Date.now() + 5 * 60 * 1000
 
       await user.save()
       await sendEmail(user.email, otp)
 
       return res.status(403).json({
-        success:false,
-        message:"Please verify your email. A new OTP has been sent.",
-        _id:user._id,
-        email:user.email
+        success: false,
+        message: "Please verify your email. A new OTP has been sent.",
+        _id: user._id,
+        email: user.email
       })
     }
 
@@ -551,10 +602,10 @@ exports.forgotPassword = async (req, res) => {
 
     await user.save();
     await sendEmail({
-  to: user.email,
-  subject: "Your SkillfulJobs.ai verification code",
-  html: otpEmailTemplate(otp),
-});
+      to: user.email,
+      subject: "Your SkillfulJobs.ai verification code",
+      html: otpEmailTemplate(otp),
+    });
 
     return res.status(200).json({
       success: true,

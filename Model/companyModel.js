@@ -2,51 +2,49 @@ const mongoose = require("mongoose");
 
 const companySchema = new mongoose.Schema(
   {
-    /*
-     * The organisation itself.
-     *
-     * Example:
-     * "ABC Recruitment Ltd"
-     */
+
     companyName: {
       type: String,
       required: true,
       trim: true,
     },
 
-    /*
-     * Description belongs to the COMPANY,
-     * not to an individual recruiter.
-     */
     companyDescription: {
       type: String,
       default: "",
       trim: true,
     },
 
-    /*
-     * Main company website.
-     *
-     * This can later be displayed on the
-     * public company profile.
-     */
     companyUrl: {
       type: String,
       default: "",
       trim: true,
     },
 
-    /*
-     * Company's main office / HQ location.
-     *
-     * IMPORTANT:
-     * This is NOT necessarily the same
-     * as Job.location.
-     *
-     * Example:
-     * Company = London
-     * Job = Manchester
-     */
+
+companySize: {
+  type: String,
+  enum: [
+    "1-10",
+    "11-50",
+    "51-200",
+    "201-500",
+    "500+",
+  ],
+  default: "",
+},
+
+
+companyType: {
+  type: String,
+  enum: [
+    "direct-employer",
+    "agency",
+    "non-profit",
+  ],
+  default: "",
+},
+
     location: {
       city: {
         type: String,
@@ -61,25 +59,13 @@ const companySchema = new mongoose.Schema(
       },
     },
 
-    /*
-     * The user who originally registered
-     * this company on SkillfulJobs.ai.
-     *
-     * Example:
-     * Alice creates ABC Recruitment.
-     *
-     * createdBy = Alice's User._id
-     */
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
-    /*
-     * Allows the platform to disable a company
-     * later without deleting its data.
-     */
     isActive: {
       type: Boolean,
       default: true,

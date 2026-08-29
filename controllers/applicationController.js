@@ -66,7 +66,25 @@ const normalizeLocation = (location) => {
     .trim();
 };
 
+const normalizeCountry = (country) => {
+  const value = String(country || "")
+    .toLowerCase()
+    .replace(/\./g, "")
+    .trim();
 
+  const aliases = {
+    uk: "united kingdom",
+    "u k": "united kingdom",
+    gb: "united kingdom",
+    "great britain": "united kingdom",
+    england: "united kingdom",
+    scotland: "united kingdom",
+    wales: "united kingdom",
+    "northern ireland": "united kingdom",
+  };
+
+  return aliases[value] || value;
+};
 // ======================================================
 // HELPER: CALCULATE APPLICATION MATCH
 // ======================================================
@@ -77,51 +95,123 @@ const calculateMatch = (
   candidateLocation,
   jobLocation
 ) => {
-  const normalizedCandidateSkills =
-    candidateSkills.map(normalizeSkill);
-
   /*
-   * Find skills that exist in both:
+   * Normalize candidate skills.
    *
-   * candidate CV skills
-   * job required skills
+   * Example:
+   * "React.js" -> "reactjs"
    */
-  const matchedSkills = jobSkills.filter(
-    (jobSkill) =>
-      normalizedCandidateSkills.includes(
-        normalizeSkill(jobSkill)
-      )
-  );
+  const normalizedCandidateSkills =
+    candidateSkills
+      .map(normalizeSkill)
+      .filter(Boolean);
 
   /*
-   * Required job skills the candidate does
-   * NOT currently have.
+   * Check whether two skills match.
+   *
+   * Exact:
+   * React.js <-> React JS
+   *
+   * Approximate:
+   * React.js <-> React
    */
-  const missingSkills = jobSkills.filter(
-    (jobSkill) =>
-      !normalizedCandidateSkills.includes(
-        normalizeSkill(jobSkill)
+  const isSkillMatch = (
+    candidateSkill,
+    jobSkill
+  ) => {
+    const candidate =
+      normalizeSkill(candidateSkill);
+
+    const job =
+      normalizeSkill(jobSkill);
+
+    if (!candidate || !job) {
+      return false;
+    }
+
+    if (candidate === job) {
+      return true;
+    }
+
+    /*
+     * Avoid bad partial matches for
+     * very short skills such as:
+     *
+     * C
+     * R
+     */
+    if (
+      candidate.length < 3 ||
+      job.length < 3
+    ) {
+      return false;
+    }
+
+    return (
+      candidate.includes(job) ||
+      job.includes(candidate)
+    );
+  };
+
+  /*
+   * Skills that the candidate has.
+   */
+  const matchedSkills =
+    jobSkills.filter((jobSkill) =>
+      normalizedCandidateSkills.some(
+        (candidateSkill) =>
+          isSkillMatch(
+            candidateSkill,
+            jobSkill
+          )
       )
-  );
+    );
 
-  const normalizedCandidateLocation =
-    normalizeLocation(candidateLocation);
+  /*
+   * Skills required by the job
+   * that the candidate does not have.
+   */
+  const missingSkills =
+    jobSkills.filter(
+      (jobSkill) =>
+        !normalizedCandidateSkills.some(
+          (candidateSkill) =>
+            isSkillMatch(
+              candidateSkill,
+              jobSkill
+            )
+        )
+    );
 
-  const normalizedJobLocation =
-    normalizeLocation(jobLocation);
+  /*
+   * IMPORTANT:
+   *
+   * Match candidate COUNTRY against
+   * JOB country.
+   *
+   * Do NOT use Company.location.
+   */
+  const candidateCountry =
+    normalizeCountry(
+      candidateLocation?.country
+    );
+
+  const jobCountry =
+    normalizeCountry(
+      jobLocation?.country
+    );
 
   const locationMatch = Boolean(
-    normalizedCandidateLocation &&
-      normalizedJobLocation &&
-      normalizedCandidateLocation ===
-        normalizedJobLocation
+    candidateCountry &&
+      jobCountry &&
+      candidateCountry === jobCountry
   );
 
   /*
-   * Your existing scoring:
+   * Matching score:
    *
-   * Skills   = max 80 points
-   * Location = max 20 points
+   * Skills   = maximum 80 points
+   * Location = maximum 20 points
    */
   const skillScore =
     jobSkills.length > 0
@@ -133,9 +223,11 @@ const calculateMatch = (
   const locationScore =
     locationMatch ? 20 : 0;
 
-  const matchScore = Math.round(
-    skillScore + locationScore
-  );
+  const matchScore =
+    Math.round(
+      skillScore +
+        locationScore
+    );
 
   return {
     matchedSkills,
@@ -144,7 +236,6 @@ const calculateMatch = (
     matchScore,
   };
 };
-
 
 // ======================================================
 // APPLY FOR JOB
@@ -174,15 +265,6 @@ const applyForJob = async (req, res) => {
       });
     }
 
-    /*
-     *
-     * Job.companyId now references Company.
-     *
-     * Job.createdBy references the recruiter
-     * who originally created the vacancy.
-     *
-     * We populate BOTH.
-     */
     const job = await Job.findById(jobId)
       .populate(
         "companyId",
@@ -217,13 +299,7 @@ const applyForJob = async (req, res) => {
 
     const currentDate = new Date();
 
-    /*
-     * Job must:
-     *
-     * - still be Open
-     * - not be expired
-     * - still have vacancies
-     */
+
     if (
       job.status !== "Open" ||
       new Date(job.applicationEndDate) <
@@ -237,12 +313,7 @@ const applyForJob = async (req, res) => {
       });
     }
 
-    /*
-     * Prevent duplicate applications.
-     *
-     * You also have a database unique index,
-     * so this is frontend-friendly protection.
-     */
+
     const alreadyApplied =
       await Application.findOne({
         candidateId: user.userId,
@@ -257,11 +328,6 @@ const applyForJob = async (req, res) => {
       });
     }
 
-    /*
-     * Use explicitly chosen CV if cvId exists.
-     *
-     * Otherwise use candidate's latest CV.
-     */
     const cv = cvId
       ? await CV.findById(cvId).lean()
       : await CV.findOne({
@@ -292,23 +358,7 @@ const applyForJob = async (req, res) => {
       job.location
     );
 
-    /*
-     * CHANGED:
-     *
-     * OLD:
-     *
-     * companyId: job.companyId.userId
-     *
-     * That stored the recruiter's numeric ID.
-     *
-     *
-     * NEW:
-     *
-     * job.companyId is the actual populated
-     * Company document.
-     *
-     * Application.companyId stores Company._id.
-     */
+   
     const application =
       await Application.create({
         candidateId:
@@ -372,20 +422,6 @@ const applyForJob = async (req, res) => {
         candidateHtml,
     });
 
-    /*
-     * CHANGED:
-     *
-     * CompanyModel does not contain recruiter email.
-     *
-     * The recruiter who created the job is stored
-     * in Job.createdBy.
-     *
-     * Therefore:
-     *
-     * job.createdBy.email
-     *
-     * receives the application notification.
-     */
     if (job.createdBy?.email) {
       await sendEmail({
         to: job.createdBy.email,
@@ -412,15 +448,7 @@ const applyForJob = async (req, res) => {
       error
     );
 
-    /*
-     * FIX:
-     *
-     * Your previous code had:
-     *
-     * res.statue(400)
-     *
-     * which is a typo.
-     */
+
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -462,12 +490,7 @@ const getRecommendedCandidates =
         });
       }
 
-      /*
-       * NEW:
-       *
-       * A company user MUST now belong
-       * to an actual Company.
-       */
+
       if (!user.companyId) {
         return res.status(400).json({
           success: false,
@@ -477,20 +500,7 @@ const getRecommendedCandidates =
         });
       }
 
-      /*
-       * CHANGED:
-       *
-       * OLD:
-       *
-       * companyId: user._id
-       *
-       * NEW:
-       *
-       * companyId: user.companyId
-       *
-       * This means all recruiters belonging
-       * to the same company see the same jobs.
-       */
+
       const jobs = await Job.find({
         companyId:
           user.companyId,
@@ -510,28 +520,13 @@ const getRecommendedCandidates =
         },
       }).lean();
 
-      /*
-       * CHANGED:
-       *
-       * Applications now belong to Company._id,
-       * not company user's numeric userId.
-       */
       const applications =
         await Application.find({
           companyId:
             user.companyId,
         }).lean();
 
-      /*
-       * NEW:
-       *
-       * Only recommend candidates who have NOT
-       * disabled recruiter visibility.
-       *
-       * $ne: false also allows old candidate
-       * documents that do not yet physically
-       * contain availableForWork.
-       */
+ 
       const candidates =
         await User.find({
           role:
@@ -542,11 +537,6 @@ const getRecommendedCandidates =
           },
         }).lean();
 
-      /*
-       * Candidate accepted anywhere in the
-       * platform should no longer appear in
-       * recruiter recommendations.
-       */
       const acceptedCandidateIds =
         new Set(
           (
@@ -567,10 +557,7 @@ const getRecommendedCandidates =
           const candidate
           of candidates
         ) {
-          /*
-           * Don't recommend a candidate who
-           * has already been accepted elsewhere.
-           */
+   
           if (
             acceptedCandidateIds.has(
               Number(
@@ -580,11 +567,6 @@ const getRecommendedCandidates =
           ) {
             continue;
           }
-
-          /*
-           * Don't recommend someone who already
-           * applied for THIS specific job.
-           */
           const alreadyApplied =
             applications.some(
               (app) =>
@@ -619,13 +601,28 @@ const getRecommendedCandidates =
             continue;
           }
 
-          const candidateSkills =
-            cv?.skills ||
-            cv?.skillsDetected ||
-            [];
+        const candidateSkillDoc =
+  await Skill.findOne({
+    candidateId: candidate.userId,
+  }).lean();
 
-          const jobSkills =
-            job.keySkills || [];
+if (!candidateSkillDoc) {
+  continue;
+}
+
+const candidateSkills =
+  Array.isArray(candidateSkillDoc.skills)
+    ? candidateSkillDoc.skills.filter(Boolean)
+    : [];
+
+if (candidateSkills.length === 0) {
+  continue;
+}
+
+const jobSkills =
+  Array.isArray(job.keySkills)
+    ? job.keySkills.filter(Boolean)
+    : [];
 
           const {
             matchedSkills,
@@ -639,10 +636,6 @@ const getRecommendedCandidates =
             job.location
           );
 
-          /*
-           * Don't recommend a candidate
-           * with absolutely no match.
-           */
           if (matchScore === 0) {
             continue;
           }
@@ -656,15 +649,7 @@ const getRecommendedCandidates =
                 candidate.lastName || ""
               }`.trim(),
 
-            /*
-             * TODO:
-             *
-             * We will remove/hide this during
-             * the Candidate Privacy task.
-             *
-             * For now it remains so we don't
-             * break your existing frontend.
-             */
+   
             candidateEmail:
               candidate.email,
 
@@ -722,7 +707,6 @@ const getRecommendedCandidates =
     }
   };
 
-
 // ======================================================
 // GET APPLICATIONS
 // ======================================================
@@ -753,12 +737,7 @@ const getApplications = async (
     if (
       user.role === "candidate"
     ) {
-      /*
-       * Candidate logic stays the same.
-       *
-       * Application.candidateId still uses
-       * your numeric User.userId.
-       */
+  
       applications =
         await Application.find({
           candidateId:
@@ -789,21 +768,6 @@ const getApplications = async (
         });
       }
 
-      /*
-       * CHANGED:
-       *
-       * OLD:
-       *
-       * companyId: user.userId
-       *
-       * NEW:
-       *
-       * companyId: user.companyId
-       *
-       * Therefore Alice and Bob from the
-       * same company can see applications
-       * belonging to their company.
-       */
       applications =
         await Application.find({
           companyId:
@@ -814,10 +778,6 @@ const getApplications = async (
           })
           .lean();
 
-      /*
-       * Add candidate details and CV
-       * information to each application.
-       */
       applications =
         await Promise.all(
           applications.map(
@@ -828,13 +788,6 @@ const getApplications = async (
                     app.candidateId,
                 }).lean();
 
-              /*
-               * Prefer the CV actually used
-               * during the application.
-               *
-               * If not available, fall back
-               * to latest candidate CV.
-               */
               const cv = app.cvId
                 ? await CV.findById(
                     app.cvId
@@ -858,11 +811,6 @@ const getApplications = async (
                       }`.trim()
                     : `Candidate ${app.candidateId}`,
 
-                /*
-                 * TODO:
-                 * Candidate privacy task will
-                 * remove this from recruiter view.
-                 */
                 candidateEmail:
                   candidate?.email ||
                   "",
@@ -909,9 +857,7 @@ const getApplications = async (
 const updateApplicationStatus =
   async (req, res) => {
     try {
-      /*
-       * New status sent by frontend.
-       */
+
       const { status } =
         req.body;
 
@@ -923,9 +869,7 @@ const updateApplicationStatus =
         "accepted",
       ];
 
-      /*
-       * Prevent random/invalid values.
-       */
+
       if (
         !allowedStatuses.includes(
           status
@@ -938,9 +882,6 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * Find logged-in company user.
-       */
       const user =
         await User.findById(
           req.user.id
@@ -958,10 +899,6 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * Company user must belong to
-       * a real Company.
-       */
       if (!user.companyId) {
         return res.status(400).json({
           success: false,
@@ -971,9 +908,6 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * Find application.
-       */
       const application =
         await Application.findById(
           req.params.id
@@ -988,20 +922,6 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * CHANGED SECURITY CHECK:
-       *
-       * OLD:
-       *
-       * application.companyId !== user.userId
-       *
-       * NEW:
-       *
-       * compare Company._id values.
-       *
-       * ObjectIds should be converted to strings
-       * before comparison.
-       */
       if (
         application.companyId.toString() !==
         user.companyId.toString()
@@ -1013,17 +933,9 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * Save previous status so we know
-       * whether this is actually a transition.
-       */
       const previousStatus =
         application.status;
 
-      /*
-       * No need to update anything if
-       * the status hasn't changed.
-       */
       if (
         previousStatus === status
       ) {
@@ -1037,20 +949,11 @@ const updateApplicationStatus =
         });
       }
 
-      /*
-       * Find the related job.
-       */
       const job =
         await Job.findById(
           application.jobId
         );
 
-      /*
-       * Extra security:
-       *
-       * The job should also belong to this
-       * same company.
-       */
       if (
         job &&
         job.companyId.toString() !==
@@ -1064,20 +967,12 @@ const updateApplicationStatus =
         });
       }
 
-
-      // ==================================================
-      // MOVING INTO ACCEPTED
-      // ==================================================
-
       if (
         status === "accepted" &&
         previousStatus !==
           "accepted"
       ) {
-        /*
-         * Candidate can only be accepted
-         * once across the platform.
-         */
+    
         const alreadyAcceptedApplication =
           await Application.findOne({
             candidateId:
@@ -1103,9 +998,6 @@ const updateApplicationStatus =
           });
         }
 
-        /*
-         * Make sure vacancy still exists.
-         */
         if (
           job &&
           job.filledPositions >=
@@ -1147,27 +1039,6 @@ const updateApplicationStatus =
         }
       }
 
-
-      // ==================================================
-      // MOVING AWAY FROM ACCEPTED
-      // ==================================================
-
-      /*
-       * FIX:
-       *
-       * Your old code increased filledPositions
-       * when status became accepted,
-       * but did not decrease it if a manager
-       * later changed:
-       *
-       * accepted -> rejected
-       *
-       * or
-       *
-       * accepted -> reviewing
-       *
-       * This would make vacancy counts incorrect.
-       */
       if (
         previousStatus ===
           "accepted" &&
@@ -1244,11 +1115,6 @@ const updateApplicationStatus =
     }
   };
 
-
-// ======================================================
-// EXPORT CONTROLLERS
-// ======================================================
-
 module.exports = {
   applyForJob,
   getApplications,
@@ -1257,7 +1123,13 @@ module.exports = {
 };
 
 
-/*
+/*CV
+ └─ proves candidate has a CV
+ └─ gives us CV file
+
+Skill
+ └─ provides extracted skills
+ └─ used for job matching
  *
  * Company recruiter changes application
  * status to:
