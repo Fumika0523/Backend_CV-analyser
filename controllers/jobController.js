@@ -597,6 +597,7 @@ const normalizeSkill = (skill) => {
     .replace(/\s+/g, "")
     .trim();
 };
+
 const calculateMatch = (
   candidateSkills = [],
   jobSkills = [],
@@ -678,6 +679,12 @@ const calculateMatch = (
       candidateCountry === jobCountry
   );
 
+  /*
+   * Registered candidate/recruiter matching:
+   *
+   * Skills   = 80 points
+   * Country  = 20 points
+   */
   const skillScore =
     jobSkills.length > 0
       ? (matchedSkills.length /
@@ -1316,40 +1323,62 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
 // ======================================================
 exports.getMatchedJobsForGuest = async (req, res) => {
   try {
-
-
     const { guestSessionId } = req.query;
 
     if (!guestSessionId) {
       return res.status(400).json({
-        message: "Guest session ID is required",
+        message:
+          "Guest session ID is required",
       });
     }
 
-    const guestSkill = await Skill.findOne({
-      guestSessionId,
-    });
+    /*
+     * Get skills extracted from
+     * the guest's uploaded CV.
+     */
+    const guestSkill =
+      await Skill.findOne({
+        guestSessionId,
+      });
 
     if (!guestSkill) {
       return res.status(404).json({
-        message: "No skills found for this guest",
+        message:
+          "No skills found for this guest",
       });
     }
 
-    const guestSkills = Array.isArray(
-      guestSkill.skills
-    )
-      ? guestSkill.skills.filter(Boolean)
-      : [];
-
-    const currentDate = new Date();
+    const guestSkills =
+      Array.isArray(
+        guestSkill.skills
+      )
+        ? guestSkill.skills.filter(
+            Boolean
+          )
+        : [];
 
     /*
-     * Guests can only be recommended jobs that:
+     * Guest preview requires skills.
+     */
+    if (guestSkills.length === 0) {
+      return res.status(200).json({
+        matchedJobs: [],
+      });
+    }
+
+    const currentDate =
+      new Date();
+
+    /*
+     * Guests can preview only jobs that:
      *
      * - are Open
      * - are not expired
      * - still have vacancies
+     *
+     * IMPORTANT:
+     * We do NOT filter guest jobs
+     * by candidate location.
      */
     const jobs = await Job.find({
       status: "Open",
@@ -1365,14 +1394,6 @@ exports.getMatchedJobsForGuest = async (req, res) => {
         ],
       },
     })
-      /*
-       * NEW:
-       *
-       * companyId now points to CompanyModel.
-       *
-       * Populate company information so the
-       * guest can see the company name.
-       */
       .populate(
         "companyId",
         "companyName companyUrl location isActive"
@@ -1381,14 +1402,10 @@ exports.getMatchedJobsForGuest = async (req, res) => {
 
     const results = [];
 
-    /*
-     * Compare guest CV skills against every
-     * available job.
-     */
     for (const job of jobs) {
       /*
-       * Don't recommend jobs from a company
-       * that has been disabled.
+       * Do not show jobs from
+       * inactive companies.
        */
       if (
         job.companyId &&
@@ -1397,109 +1414,185 @@ exports.getMatchedJobsForGuest = async (req, res) => {
         continue;
       }
 
-      const jobSkills = Array.isArray(job.keySkills)
-        ? job.keySkills.filter(Boolean)
-        : [];
+      const jobSkills =
+        Array.isArray(job.keySkills)
+          ? job.keySkills.filter(Boolean)
+          : [];
 
-      const matchedSkills = jobSkills.filter(
-        (jobSkill) => {
-          const normalizedJobSkill =
-            normalizeSkill(jobSkill);
-
-          return guestSkills.some(
-            (guestSkillItem) => {
-              const normalizedGuestSkill =
-                normalizeSkill(guestSkillItem);
-
-              return (
-                normalizedGuestSkill ===
-                  normalizedJobSkill ||
-                normalizedGuestSkill.includes(
-                  normalizedJobSkill
-                ) ||
-                normalizedJobSkill.includes(
-                  normalizedGuestSkill
-                )
-              );
-            }
-          );
-        }
-      );
+      if (jobSkills.length === 0) {
+        continue;
+      }
 
       /*
-       * Calculate match percentage.
+       * Helper used only for
+       * guest skill comparison.
+       */
+      const isGuestSkillMatch = (
+        guestSkillItem,
+        jobSkill
+      ) => {
+        const guest =
+          normalizeSkill(
+            guestSkillItem
+          );
+
+        const jobValue =
+          normalizeSkill(
+            jobSkill
+          );
+
+        if (
+          !guest ||
+          !jobValue
+        ) {
+          return false;
+        }
+
+        if (
+          guest === jobValue
+        ) {
+          return true;
+        }
+
+        if (
+          guest.length < 3 ||
+          jobValue.length < 3
+        ) {
+          return false;
+        }
+
+        return (
+          guest.includes(
+            jobValue
+          ) ||
+          jobValue.includes(
+            guest
+          )
+        );
+      };
+
+      /*
+       * Required skills the guest has.
+       */
+      const matchedSkills =
+        jobSkills.filter(
+          (jobSkill) =>
+            guestSkills.some(
+              (guestSkillItem) =>
+                isGuestSkillMatch(
+                  guestSkillItem,
+                  jobSkill
+                )
+            )
+        );
+
+      /*
+       * Required skills the guest
+       * does not have.
+       */
+      const missingSkills =
+        jobSkills.filter(
+          (jobSkill) =>
+            !guestSkills.some(
+              (guestSkillItem) =>
+                isGuestSkillMatch(
+                  guestSkillItem,
+                  jobSkill
+                )
+            )
+        );
+
+      /*
+       * Guest score is SKILLS ONLY.
+       *
+       * Example:
+       *
+       * 3 required skills
+       * 2 matched skills
+       *
+       * = 67%
        */
       const matchScore =
-        jobSkills.length > 0
-          ? Math.round(
-              (matchedSkills.length /
-                jobSkills.length) *
-                100
-            )
-          : 0;
+        Math.round(
+          (matchedSkills.length /
+            jobSkills.length) *
+            100
+        );
 
       /*
-       * Same recommendation threshold
-       * you're already using:
-       *
-       * Only show jobs above 50%.
+       * Only show useful previews.
        */
       if (matchScore <= 50) {
         continue;
       }
 
       results.push({
-        jobId: job._id,
+        jobId:
+          job._id,
 
-        title: job.title,
+        title:
+          job.title,
 
-        /*
-         * NEW:
-         * Company information now comes
-         * from CompanyModel.
-         */
         companyName:
-          job.companyId?.companyName || "Company",
+          job.companyId
+            ?.companyName ||
+          "Company",
 
         companyUrl:
           job.companyUrl ||
-          job.companyId?.companyUrl ||
+          job.companyId
+            ?.companyUrl ||
           "",
 
-        location: job.location,
+        location:
+          job.location,
 
-        salary: job.salary,
+        salary:
+          job.salary,
 
-        jobType: job.jobType,
+        jobType:
+          job.jobType,
 
-        workMode: job.workMode,
+        workMode:
+          job.workMode,
 
-        category: job.category,
+        category:
+          job.category,
 
-        industry: job.industry,
+        industry:
+          job.industry,
 
         matchedSkills,
 
+        missingSkills,
+
+        /*
+         * Guest score is skills only.
+         */
         matchScore,
       });
     }
 
     /*
-     * Best matching job first.
+     * Highest skill match first.
      */
-    const sortedResults = results.sort(
-      (a, b) => b.matchScore - a.matchScore
-    );
+    const sortedResults =
+      results.sort(
+        (a, b) =>
+          b.matchScore -
+          a.matchScore
+      );
 
     /*
-     * Guest currently sees only the top 5.
-     *
-     * This is a useful conversion/business rule:
-     * guests get a preview, while registered
-     * candidates can access the full experience.
+     * Guest preview:
+     * show TOP 3 only.
      */
     return res.status(200).json({
-      matchedJobs: sortedResults.slice(0, 5),
+      matchedJobs:
+        sortedResults.slice(
+          0,
+          3
+        ),
     });
   } catch (error) {
     console.error(
