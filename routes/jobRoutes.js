@@ -7,7 +7,7 @@ const {
   getSingleJobPost,
   updateJobPost,
   deleteJobPost,
-  getMatchedJobsForCompany,
+  getMatchedCandidatesForJob,
   getMatchedJobsForCandidate,
   getMatchedJobsForGuest,
 } = require("../controllers/jobController");
@@ -68,21 +68,10 @@ router.delete(
 // COMPANY - MATCHED CANDIDATES
 // ========================================
 
-/*
- * CHANGE:
- *
- * Added `auth`.
- *
- * getMatchedJobsForCompany now needs:
- *
- * req.user.id
- *
- * so we must authenticate the recruiter first.
- */
 router.get(
   "/jobs/:jobId/matches",
   auth,
-  getMatchedJobsForCompany
+  getMatchedCandidatesForJob
 );
 
 

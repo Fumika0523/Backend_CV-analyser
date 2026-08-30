@@ -3,45 +3,26 @@ const mongoose = require("mongoose");
 const applicationSchema =
   new mongoose.Schema(
     {
-      /*
-       * KEEP FOR NOW.
-       *
-       * Candidate still uses your numeric userId
-       * because CV and Skill currently use the
-       * same identifier.
-       */
+    
       candidateId: {
         type: Number,
         required: true,
       },
 
-      /*
-       * CHANGED:
-       *
-       * Previously:
-       * companyId = numeric recruiter userId
-       *
-       * Now:
-       * companyId = actual Company._id
-       */
+  
       companyId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Company",
         required: true,
       },
 
-      /*
-       * Job being applied for.
-       */
+
       jobId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Job",
         required: true,
       },
 
-      /*
-       * CV used when the candidate applied.
-       */
       cvId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "CV",

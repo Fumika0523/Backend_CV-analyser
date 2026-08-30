@@ -3,7 +3,7 @@ const User = require("../Model/UserModel");
 const Job = require("../Model/jobModel");
 const sendEmail = require("../utils/sendEmail");
 const CV = require("../Model/CVModel");
-
+const Skill = require("../Model/skillsModel");
 const {
   candidateApplicationTemplate,
   companyApplicationTemplate,

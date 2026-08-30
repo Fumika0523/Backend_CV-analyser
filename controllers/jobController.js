@@ -703,37 +703,26 @@ const calculateMatch = (
 };
 
 // ======================================================
-// GET MATCHED CANDIDATES FOR COMPANY JOB
+// GET MATCHED CANDIDATES FOR COMPANY JOB:
+// A Company opens one of their jobs and asks - "Which candidates match this job?"
 // ======================================================
-exports.getMatchedJobsForCompany = async (
-  req,
-  res
-) => {
+exports.getMatchedCandidatesForJob = async (req, res) => {
   try {
-    const { jobId } =
-      req.params;
-
+    const { jobId } = req.params;
     if (!jobId) {
       return res.status(400).json({
-        message:
-          "Job ID is required",
+        message: "Job ID is required",
       });
     }
 
-    /*
-     * NEW:
-     *
-     * Find the logged-in recruiter.
-     */
-    const companyUser =
-      await User.findById(
-        req.user.id
-      );
+
+    const companyUser = await User.findById(
+      req.user.id
+    );
 
     if (
       !companyUser ||
-      companyUser.role !==
-        "company"
+      companyUser.role !== "company"
     ) {
       return res.status(403).json({
         message:
@@ -741,6 +730,10 @@ exports.getMatchedJobsForCompany = async (
       });
     }
 
+    /*
+     * Company user must belong to
+     * an actual Company.
+     */
     if (!companyUser.companyId) {
       return res.status(400).json({
         message:
@@ -748,25 +741,22 @@ exports.getMatchedJobsForCompany = async (
       });
     }
 
-    const job = await Job.findById(
-      jobId
-    );
+    /*
+     * Get the requested job.
+     */
+    const job = await Job.findById(jobId);
 
     if (!job) {
       return res.status(404).json({
-        message:
-          "Job not found",
+        message: "Job not found",
       });
     }
 
     /*
-     * IMPORTANT SECURITY FIX:
+     * SECURITY:
      *
-     * Previously any company could potentially
-     * submit another company's jobId.
-     *
-     * Now the requested job must belong to
-     * the logged-in user's Company.
+     * Recruiters can only view matches
+     * for jobs belonging to their company.
      */
     if (
       job.companyId.toString() !==
@@ -778,58 +768,102 @@ exports.getMatchedJobsForCompany = async (
       });
     }
 
-    const jobSkills =
-      Array.isArray(job.keySkills)
-        ? job.keySkills.filter(Boolean)
-        : [];
+    /*
+     * Don't return recommendations for
+     * closed or expired jobs.
+     */
+    if (job.status !== "Open") {
+      return res.status(200).json({
+        title: job.title,
+        jobLocation: job.location,
+        jobSkills: job.keySkills || [],
+        matchedCandidates: [],
+        message: "This job is closed",
+      });
+    }
 
+    if (
+      job.applicationEndDate &&
+      new Date(job.applicationEndDate) <
+        new Date()
+    ) {
+      return res.status(200).json({
+        title: job.title,
+        jobLocation: job.location,
+        jobSkills: job.keySkills || [],
+        matchedCandidates: [],
+        message:
+          "The application deadline has passed",
+      });
+    }
+
+    /*
+     * Don't recommend candidates when
+     * all vacancies have been filled.
+     */
+    if (
+      Number(job.filledPositions || 0) >=
+      Number(job.vacancies || 0)
+    ) {
+      return res.status(200).json({
+        title: job.title,
+        jobLocation: job.location,
+        jobSkills: job.keySkills || [],
+        matchedCandidates: [],
+        message:
+          "All vacancies for this job have been filled",
+      });
+    }
+
+    const jobSkills = Array.isArray(
+      job.keySkills
+    )
+      ? job.keySkills.filter(Boolean)
+      : [];
+
+    /*
+     * A job without key skills cannot
+     * be meaningfully matched.
+     */
     if (jobSkills.length === 0) {
       return res.status(200).json({
-        title:
-          job.title,
-
-        jobLocation:
-          job.location,
-
+        title: job.title,
+        jobLocation: job.location,
         jobSkills: [],
-
         matchedCandidates: [],
-
         message:
           "This job does not have any key skills",
       });
     }
 
+    /*
+     * Get candidates who have extracted
+     * skills available.
+     */
     const candidateSkillDocuments =
       await Skill.find({
         candidateId: {
           $ne: null,
         },
-      });
+      }).lean();
 
     if (
-      candidateSkillDocuments.length ===
-      0
+      candidateSkillDocuments.length === 0
     ) {
       return res.status(200).json({
-        title:
-          job.title,
-
-        jobLocation:
-          job.location,
-
+        title: job.title,
+        jobLocation: job.location,
         jobSkills,
-
         matchedCandidates: [],
-
         message:
           "No candidate skills found",
       });
     }
 
     /*
-     * Candidates already accepted anywhere
-     * in the system should not appear again.
+     * Candidates accepted anywhere on
+     * SkillfulJobs.ai should disappear
+     * from recruiter recommendations.
      */
     const acceptedCandidateIds =
       new Set(
@@ -843,27 +877,48 @@ exports.getMatchedJobsForCompany = async (
         ).map(Number)
       );
 
+    /*
+     * Candidates who already applied for
+     * THIS job should not appear in
+     * Recommended Candidates.
+     *
+     * They belong in the Applicants list.
+     */
+    const appliedCandidateIds =
+      new Set(
+        (
+          await Application.distinct(
+            "candidateId",
+            {
+              jobId: job._id,
+            }
+          )
+        ).map(Number)
+      );
+
     const results = [];
 
+    /*
+     * Compare every candidate against
+     * this job.
+     */
     for (
       const candidateSkillDocument
       of candidateSkillDocuments
     ) {
-      const candidateId =
-        Number(
-          candidateSkillDocument.candidateId
-        );
+      const candidateId = Number(
+        candidateSkillDocument.candidateId
+      );
 
       if (
-        !Number.isFinite(
-          candidateId
-        )
+        !Number.isFinite(candidateId)
       ) {
         continue;
       }
 
       /*
-       * Candidate already hired somewhere.
+       * Candidate already accepted
+       * somewhere else.
        */
       if (
         acceptedCandidateIds.has(
@@ -873,6 +928,69 @@ exports.getMatchedJobsForCompany = async (
         continue;
       }
 
+      /*
+       * Candidate already applied
+       * for this particular job.
+       */
+      if (
+        appliedCandidateIds.has(
+          candidateId
+        )
+      ) {
+        continue;
+      }
+
+      /*
+       * Get candidate's User profile.
+       */
+      const candidate =
+        await User.findOne({
+          userId: candidateId,
+          role: "candidate",
+        }).lean();
+
+      if (!candidate) {
+        continue;
+      }
+
+      /*
+       * IMPORTANT:
+       *
+       * availableForWork:false means:
+       *
+       * Do NOT show this candidate
+       * proactively to recruiters.
+       *
+       * It does NOT stop the candidate
+       * from manually applying for jobs.
+       */
+      if (
+        candidate.availableForWork ===
+        false
+      ) {
+        continue;
+      }
+
+      /*
+       * Candidate must have a CV
+       * before appearing in recruiter
+       * recommendations.
+       */
+      const cv = await CV.findOne({
+        candidateId,
+      })
+        .sort({
+          version: -1,
+        })
+        .lean();
+
+      if (!cv) {
+        continue;
+      }
+
+      /*
+       * Skills come from Skill collection.
+       */
       const candidateSkills =
         Array.isArray(
           candidateSkillDocument.skills
@@ -882,117 +1000,46 @@ exports.getMatchedJobsForCompany = async (
             )
           : [];
 
-      const matchedSkills =
-        jobSkills.filter(
-          (jobSkill) => {
-            const normalizedJobSkill =
-              normalizeSkill(
-                jobSkill
-              );
-
-            return candidateSkills.some(
-              (
-                candidateSkill
-              ) => {
-                const normalizedCandidateSkill =
-                  normalizeSkill(
-                    candidateSkill
-                  );
-
-                return (
-                  normalizedCandidateSkill ===
-                    normalizedJobSkill ||
-
-                  normalizedCandidateSkill.includes(
-                    normalizedJobSkill
-                  ) ||
-
-                  normalizedJobSkill.includes(
-                    normalizedCandidateSkill
-                  )
-                );
-              }
-            );
-          }
-        );
-
-      const matchScore =
-        Math.round(
-          (matchedSkills.length /
-            jobSkills.length) *
-            100
-        );
-
-      /*
-       * No matching skills.
-       */
-      if (matchScore === 0) {
-        continue;
-      }
-
-      /*
-       * Get candidate's User document.
-       */
-      const candidate =
-        await User.findOne({
-          userId:
-            candidateId,
-        });
-
-      if (!candidate) {
-        continue;
-      }
-
-      /*
-       * NEW:
-       *
-       * This connects the Available for Work
-       * feature we just built.
-       *
-       * Candidate switched OFF:
-       * do not recommend them to companies.
-       */
       if (
-        candidate.availableForWork ===
-        false
+        candidateSkills.length === 0
       ) {
         continue;
       }
 
-      const jobCountry =
-        normalizeCountry(
-          job.location?.country
-        );
-
-      const candidateCountry =
-        normalizeCountry(
-          candidate.location
-            ?.country
-        );
-
-      const locationMatched =
-        Boolean(
-          jobCountry &&
-            candidateCountry &&
-            jobCountry ===
-              candidateCountry
-        );
+      /*
+       * SAME matching function used by
+       * Candidate Recommended Jobs.
+       */
+      const {
+        matchedSkills,
+        missingSkills,
+        locationMatch,
+        matchScore,
+      } = calculateMatch(
+        candidateSkills,
+        jobSkills,
+        candidate.location,
+        job.location
+      );
 
       /*
-       * Current business rule:
-       * candidate must be in the same country.
+       * Candidate and JOB must be
+       * in the same country.
        */
-      if (!locationMatched) {
+      if (!locationMatch) {
         continue;
       }
 
-      const cv =
-        await CV.findOne({
-          candidateId,
-        }).sort({
-          version: -1,
-        });
+      /*
+       * Only meaningful recommendations.
+       */
+      if (matchScore <= 50) {
+        continue;
+      }
 
+      /*
+       * Add candidate to recommendations.
+       */
       results.push({
         candidateId,
 
@@ -1003,13 +1050,10 @@ exports.getMatchedJobsForCompany = async (
           `Candidate ${candidateId}`,
 
         /*
-         * NOTE:
+         * TEMPORARY.
          *
-         * We are still returning email here.
-         *
-         * Later, during the privacy task,
-         * we'll remove recruiter access to
-         * candidate contact details.
+         * We'll remove candidate contact
+         * information during the privacy task.
          */
         email:
           candidate.email || "",
@@ -1017,9 +1061,27 @@ exports.getMatchedJobsForCompany = async (
         candidateLocation:
           candidate.location || null,
 
-        locationMatched,
+        /*
+         * IMPORTANT:
+         * MatchScoreModal expects
+         * "locationMatch".
+         */
+        locationMatch,
+
+        /*
+         * Keep this temporarily too,
+         * in case old frontend code
+         * still uses locationMatched.
+         */
+        locationMatched:
+          locationMatch,
 
         matchedSkills,
+
+        /*
+         * Required by MatchScoreModal.
+         */
+        missingSkills,
 
         totalJobSkills:
           jobSkills.length,
@@ -1027,10 +1089,13 @@ exports.getMatchedJobsForCompany = async (
         matchScore,
 
         cvPath:
-          cv?.filePath || null,
+          cv.filePath || null,
       });
     }
 
+    /*
+     * Best matches first.
+     */
     const sortedResults =
       results.sort(
         (a, b) =>
@@ -1061,7 +1126,6 @@ exports.getMatchedJobsForCompany = async (
     });
   }
 };
-
 
 // ======================================================
 // GET MATCHED JOBS FOR CANDIDATE
@@ -1449,3 +1513,14 @@ exports.getMatchedJobsForGuest = async (req, res) => {
     });
   }
 };
+
+//                  calculateMatch()
+//                        │
+//           ┌────────────┴────────────┐
+//           ↓                         ↓
+// Candidate Recommended Jobs   Recruiter Candidates
+//           │                         │
+//           ├─ matchedSkills          ├─ matchedSkills
+//           ├─ missingSkills          ├─ missingSkills
+//           ├─ locationMatch          ├─ locationMatch
+//           └─ matchScore             └─ matchScore
