@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 
 const companySchema = new mongoose.Schema(
   {
-
     companyName: {
       type: String,
       required: true,
@@ -21,29 +20,27 @@ const companySchema = new mongoose.Schema(
       trim: true,
     },
 
+    companySize: {
+      type: String,
+      enum: [
+        "1-10",
+        "11-50",
+        "51-200",
+        "201-500",
+        "500+",
+      ],
+      default: "",
+    },
 
-companySize: {
-  type: String,
-  enum: [
-    "1-10",
-    "11-50",
-    "51-200",
-    "201-500",
-    "500+",
-  ],
-  default: "",
-},
-
-
-companyType: {
-  type: String,
-  enum: [
-    "direct-employer",
-    "agency",
-    "non-profit",
-  ],
-  default: "",
-},
+    companyType: {
+      type: String,
+      enum: [
+        "direct-employer",
+        "agency",
+        "non-profit",
+      ],
+      default: "",
+    },
 
     location: {
       city: {
@@ -59,11 +56,11 @@ companyType: {
       },
     },
 
-
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      unique: true,
     },
 
     isActive: {
@@ -77,8 +74,7 @@ companyType: {
 );
 
 module.exports = mongoose.model(
-  "Company",
-  companySchema
+  "Company", companySchema
 );
 
 
