@@ -45,7 +45,6 @@ exports.createJobPost =
           });
       }
 
-
       const company =
         await Company.findById(
           user.companyId
@@ -155,50 +154,39 @@ exports.createJobPost =
         };
       }
 
-      const job =
-        await Job.create({
+const posterName =
+  `${user.firstName || ""} ${
+    user.lastName || ""
+  }`.trim();
 
-          companyId:
-            company._id,
-
-
-          createdBy:
-            user._id,
-
-          title,
-          jobType,
-          workMode,
-          education,
-          experience,
-          keySkills,
-          location:
-            formattedLocation,
-          responsibilities,
-          roleSummary,
-          compensationBenefits,
-          requirements,
-          category,
-          industry,
-
-          applicationEndDate,
-          salary,
-
-          vacancies:
-            Number(
-              vacancies
-            ) || 1,
-
-          filledPositions:
-            0,
-        });
-
-
-      return res
-        .status(201)
-        .json({
-          message:
-            "Job created successfully",
-
+const job =
+  await Job.create({
+    companyId: company._id,
+    createdBy: user._id,
+    postedByName: posterName,
+    postedByPosition: user.companyPosition,
+    title,
+    jobType,
+    workMode,
+    education,
+    experience,
+    keySkills,
+    location:
+    formattedLocation,
+    responsibilities,
+    roleSummary,
+    compensationBenefits,
+    requirements,
+    category,
+    industry,
+    applicationEndDate,
+    salary,
+    vacancies:
+    Number(vacancies) || 1,
+    filledPositions: 0,
+   });
+      return res.status(201).json({
+      message: "Job created successfully",
           job,
         });
     } catch (error) {
@@ -206,7 +194,6 @@ exports.createJobPost =
         "Create job error:",
         error
       );
-
       return res
         .status(500)
         .json({
@@ -218,16 +205,12 @@ exports.createJobPost =
   };
 
 
-// ======================================================
 // GET ALL PUBLIC JOBS
-// ======================================================
 exports.getAllJobPosts = async (req, res) => {
   try {
     const currentDate = new Date();
-
     const jobs = await Job.find({
       status: "Open",
-
       applicationEndDate: {
         $gte: currentDate,
       },
@@ -239,27 +222,20 @@ exports.getAllJobPosts = async (req, res) => {
         ],
       },
     })
-
-
-      .populate(
+    .populate(
         "companyId",
         "companyName companyDescription companyUrl location isActive"
       )
-
-
       .sort({
         createdAt: -1,
       })
-
       .lean();
-
     return res.status(200).json(jobs);
   } catch (error) {
     console.error(
       "Get all jobs error:",
       error
     );
-
     return res.status(500).json({
       message: "Server error",
     });
@@ -267,9 +243,8 @@ exports.getAllJobPosts = async (req, res) => {
 };
 
 
-// ======================================================
 // GET MY COMPANY JOBS
-// ======================================================
+
 exports.getMyCompanyJobPosts = async (
   req,
   res
@@ -325,9 +300,7 @@ exports.getMyCompanyJobPosts = async (
 };
 
 
-// ======================================================
 // GET SINGLE JOB
-// ======================================================
 exports.getSingleJobPost = async (
   req,
   res
@@ -336,7 +309,6 @@ exports.getSingleJobPost = async (
     const job = await Job.findById(
       req.params.id
     )
-
       .populate(
         "companyId",
         "companyName companyDescription companyUrl location"
@@ -362,9 +334,7 @@ exports.getSingleJobPost = async (
 };
 
 
-// ======================================================
 // UPDATE JOB
-// ======================================================
 exports.updateJobPost = async (
   req,
   res
@@ -417,9 +387,7 @@ exports.updateJobPost = async (
     };
 
     delete updateData.companyId;
-
     delete updateData.createdBy;
-
     delete updateData.filledPositions;
 
     if (
@@ -452,15 +420,13 @@ exports.updateJobPost = async (
         updateData,
         {
           new: true,
-
           runValidators: true,
         }
       );
 
     return res.status(200).json({
       message:
-        "Job updated successfully",
-
+      "Job updated successfully",
       job: updatedJob,
     });
   } catch (error) {
@@ -478,9 +444,7 @@ exports.updateJobPost = async (
 };
 
 
-// ======================================================
 // CLOSE JOB
-// ======================================================
 exports.deleteJobPost = async (
   req,
   res
@@ -518,9 +482,6 @@ exports.deleteJobPost = async (
       });
     }
 
-    /*
-     * NEW company ownership check.
-     */
     if (
       job.companyId.toString() !==
       user.companyId.toString()
@@ -532,13 +493,10 @@ exports.deleteJobPost = async (
     }
 
     job.status = "Closed";
-
     await job.save();
-
     return res.status(200).json({
       message:
         "Job closed successfully",
-
       job,
     });
   } catch (error) {
@@ -554,9 +512,8 @@ exports.deleteJobPost = async (
 };
 
 
-// ======================================================
+
 // HELPER: NORMALIZE COUNTRY
-// ======================================================
 const normalizeCountry = (country) => {
   const value = String(
     country || ""
@@ -569,26 +526,20 @@ const normalizeCountry = (country) => {
     uk: "united kingdom",
     "u k": "united kingdom",
     gb: "united kingdom",
-
     "great britain":
       "united kingdom",
-
     england:
       "united kingdom",
-
     scotland:
       "united kingdom",
-
     wales:
-      "united kingdom",
-
+    "united kingdom",
     "northern ireland":
-      "united kingdom",
+    "united kingdom",
   };
 
   return aliases[value] || value;
 };
-
 
 const normalizeSkill = (skill) => {
   return String(skill || "")
@@ -679,12 +630,6 @@ const calculateMatch = (
       candidateCountry === jobCountry
   );
 
-  /*
-   * Registered candidate/recruiter matching:
-   *
-   * Skills   = 80 points
-   * Country  = 20 points
-   */
   const skillScore =
     jobSkills.length > 0
       ? (matchedSkills.length /
@@ -709,10 +654,10 @@ const calculateMatch = (
   };
 };
 
-// ======================================================
+
 // GET MATCHED CANDIDATES FOR COMPANY JOB:
 // A Company opens one of their jobs and asks - "Which candidates match this job?"
-// ======================================================
+
 exports.getMatchedCandidatesForJob = async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -1134,9 +1079,9 @@ exports.getMatchedCandidatesForJob = async (req, res) => {
   }
 };
 
-// ======================================================
+
 // GET MATCHED JOBS FOR CANDIDATE
-// ======================================================
+
 exports.getMatchedJobsForCandidate = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -1318,9 +1263,8 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
   }
 };
 
-// ======================================================
+
 // GET MATCHED JOBS FOR GUEST
-// ======================================================
 exports.getMatchedJobsForGuest = async (req, res) => {
   try {
     const { guestSessionId } = req.query;
@@ -1504,12 +1448,9 @@ exports.getMatchedJobsForGuest = async (req, res) => {
 
       /*
        * Guest score is SKILLS ONLY.
-       *
        * Example:
-       *
        * 3 required skills
        * 2 matched skills
-       *
        * = 67%
        */
       const matchScore =
