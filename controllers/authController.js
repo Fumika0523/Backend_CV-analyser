@@ -5,9 +5,7 @@ const bcrypt = require("bcryptjs");
 const sendEmail = require("../utils/sendEmail")
 const getNextSequence = require("../utils/getNextSequence");
 const CV = require("../Model/CVModel");
-const {
-  otpEmailTemplate,
-} = require("../utils/emailTemplates");
+const { otpEmailTemplate } = require("../utils/emailTemplates");
 const validateEmailForOtp = require("../utils/validateEmail");
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -30,7 +28,6 @@ exports.signUp = async (req, res) => {
     const {
       firstName,
       lastName,
-      // User-entered email before validation.
       email: rawEmail,
       password,
       role,
@@ -44,44 +41,69 @@ exports.signUp = async (req, res) => {
       guestSessionId,
     } = req.body;
 
-    const emailValidation =
-      await validateEmailForOtp(rawEmail);
+    // Normalize email
+    const email = String(rawEmail || "")
+      .trim()
+      .toLowerCase();
 
-    if (emailValidation.status !== "valid") {
+    // Basic backend email format check
+    if (!email) {
       return res.status(400).json({
         field: "email",
-        code: emailValidation.status,
-
-        message:
-          emailValidation.message ||
-          "Please enter a valid email address.",
-
-        suggestion:
-          emailValidation.suggestion || null,
+        code: "EMAIL_REQUIRED",
+        message: "Email address is required.",
       });
     }
-
-    // Use normalized / cleaned email.
-    const email = emailValidation.email;
-
-    const userExists = await User.findOne({
-      $or: [
-        { email },
-        { phoneNumber },
-      ],
-    });
-
-    if (userExists) {
-      return res.status(400).json({
-        message:
-          "User already exists. Please Sign in.",
-      });
-    }
-
 
     /*
-     * A company user must provide a company name
-     * because we're going to create a Company document.
+     * Check email separately so we can return
+     * a clear error message.
+     */
+    const existingUser = await User.findOne({
+      email,
+    });
+
+    if (existingUser) {
+      /*
+       * User exists but hasn't completed OTP verification.
+       * Send them back to the OTP screen.
+       */
+      if (!existingUser.isVerified) {
+        return res.status(403).json({
+          field: "email",
+          code: "EMAIL_NOT_VERIFIED",
+          _id: existingUser._id,
+          message:
+            "This email is already registered but has not been verified. Please verify your email.",
+        });
+      }
+
+      return res.status(409).json({
+        field: "email",
+        code: "EMAIL_EXISTS",
+        message:
+          "This email is already registered. Please sign in.",
+      });
+    }
+
+    /*
+     * Check phone number separately.
+     */
+    const existingPhone = await User.findOne({
+      phoneNumber,
+    });
+
+    if (existingPhone) {
+      return res.status(409).json({
+        field: "phoneNumber",
+        code: "PHONE_EXISTS",
+        message:
+          "This phone number is already registered. Please sign in.",
+      });
+    }
+
+    /*
+     * Company account must have a company name.
      */
     if (
       role === "company" &&
@@ -94,20 +116,17 @@ exports.signUp = async (req, res) => {
     }
 
     // Hash password
-    const salt =
-      await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(10);
 
-    const hashedPassword =
-      await bcrypt.hash(
-        password,
-        salt
-      );
+    const hashedPassword = await bcrypt.hash(
+      password,
+      salt
+    );
 
     const otp = generateOTP();
 
     const userId =
       await getNextSequence("userId");
-
 
     const userData = {
       userId,
@@ -122,19 +141,13 @@ exports.signUp = async (req, res) => {
       otp,
 
       otpExpiry:
-        Date.now() +
-        5 * 60 * 1000,
+        Date.now() + 5 * 60 * 1000,
 
       isVerified: false,
     };
 
     /*
-     *
-     * Keep these legacy User fields while the rest
-     * of your frontend is still being migrated.
-     *
-     * Later, companyName and companyDescription
-     * should come from CompanyModel only.
+     * Keep legacy company fields temporarily.
      */
     if (role === "company") {
       userData.companyName =
@@ -144,52 +157,36 @@ exports.signUp = async (req, res) => {
         companyDescription || "";
     }
 
-
-    /*
-     * We create the User first because Company.createdBy
-     * requires a real User._id.
-     */
-    user = await User.create(
-      userData
-    );
-
+    user = await User.create(userData);
 
     if (role === "company") {
-      /*
-       * This registration represents creation of a
-       * NEW company workspace.
-       *
-       * Later, additional recruiters will JOIN this
-       * Company instead of creating another one.
-       */
-      company =
-        await Company.create({
-          companyName:
-            companyName.trim(),
+      company = await Company.create({
+        companyName:
+          companyName.trim(),
 
-          companyDescription:
-            companyDescription || "",
-          companyUrl:
-            companyUrl?.trim() || "",
-          companySize:
-            companySize || "",
+        companyDescription:
+          companyDescription || "",
 
-          companyType:
-            companyType || "",
+        companyUrl:
+          companyUrl?.trim() || "",
 
-          location: {
-            city:
-              location?.city || "",
+        companySize:
+          companySize || "",
 
-            country:
-              location?.country || "",
-          },
+        companyType:
+          companyType || "",
 
+        location: {
+          city:
+            location?.city || "",
 
-          createdBy:
-            user._id,
-        });
+          country:
+            location?.country || "",
+        },
 
+        createdBy:
+          user._id,
+      });
 
       user.companyId =
         company._id;
@@ -200,15 +197,17 @@ exports.signUp = async (req, res) => {
       await user.save();
     }
 
+    /*
+     * Link guest CVs to newly registered candidate.
+     */
     if (
       role === "candidate" &&
-      req.body.guestSessionId
+      guestSessionId
     ) {
       const updatedCV =
         await CV.updateMany(
           {
-            guestSessionId:
-              req.body.guestSessionId,
+            guestSessionId,
           },
           {
             $set: {
@@ -227,6 +226,10 @@ exports.signUp = async (req, res) => {
       );
     }
 
+    /*
+     * OTP proves that the user actually has
+     * access to this email address.
+     */
     await sendEmail({
       to: email,
 
@@ -236,7 +239,6 @@ exports.signUp = async (req, res) => {
       html:
         otpEmailTemplate(otp),
     });
-
 
     return res.status(201).json({
       success: true,
@@ -272,9 +274,23 @@ exports.signUp = async (req, res) => {
       );
     }
 
+    /*
+     * Extra protection for MongoDB unique email.
+     */
     if (
-      error.name ===
-      "ValidationError" ||
+      error.code === 11000 &&
+      error.keyPattern?.email
+    ) {
+      return res.status(409).json({
+        field: "email",
+        code: "EMAIL_EXISTS",
+        message:
+          "This email is already registered. Please sign in.",
+      });
+    }
+
+    if (
+      error.name === "ValidationError" ||
       error.statusCode === 400
     ) {
       return res.status(400).json({
@@ -284,7 +300,7 @@ exports.signUp = async (req, res) => {
 
     return res.status(500).json({
       message:
-        "Signup failed. Please check the detail again.",
+        "Signup failed. Please check the details and try again.",
     });
   }
 };

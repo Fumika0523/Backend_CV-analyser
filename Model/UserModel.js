@@ -38,23 +38,12 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
       default: null,
     },
-
-    companyPosition: {
-      type: String,
-      trim: true,
-      default: "",
-      required: function () {
-        return this.role === "company";
-      },
-    },
-
-
+ 
     location: {
       city: {
         type: String,
