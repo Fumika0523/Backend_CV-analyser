@@ -1,11 +1,11 @@
 const CV = require("../Model/CVModel");
 const User = require("../Model/UserModel");
+const Application = require("../Model/applicationModel");
 const path = require("path");
 const fs = require("fs/promises");
 const { default: PdfParse } = require("pdf-parse-new");
 const CVAnalyse = require("../services/CVAnalyse")
 const Skill = require('../Model/skillsModel')
-
 
 // fs.mkdir() >> Make directory
 /// A helper function called ensureDirExists which uses fs.mkfir() with recursive: true. This guarantees the candidate's upload directory exists before moving the PDF file into it and prevents file-system error when a folder is missing.
@@ -240,9 +240,7 @@ exports.getLatestCV = async (req, res) => {
   }
 };
 
-
 //If you want to show candidate name later, numeric candidateId: 13 cannot use normal Mongoose populate() unless your User schema uses userId as the reference field.
-
 exports.getMyCVs = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -255,13 +253,108 @@ exports.getMyCVs = async (req, res) => {
       return res.status(403).json({ message: "Only candidates can view CVs" });
     }
 
-    const cvs = await CV.find({ candidateId: user.userId }).sort({
-      version: -1,
-    });
+    const cvs = await CV.find({ candidateId: user.userId}).select( "_id version fileName uploadedAt createdAt" ).sort({ version: -1, });
 
     res.status(200).json(cvs);
   } catch (error) {
     console.error("Get my CVs error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.downloadCV = async (req, res) => {
+  try {
+    const cv = await CV.findById(req.params.id);
+    if (!cv) {
+      return res.status(404).json({
+        message: "CV not found",
+      });
+    }
+
+    const user = req.user;
+    let allowed = false;
+
+    // Candidate can access their own CV
+    if (
+      user.role === "candidate" &&
+      user.userId === cv.candidateId
+    ) {
+      allowed = true;
+    }
+
+    // Company can access a CV only if an application
+    // belonging to that company references this CV.
+    if (
+      user.role === "company" &&
+      user.companyId
+    ) {
+      const application = await Application.findOne({
+        companyId: user.companyId,
+        cvId: cv._id,
+      });
+
+      if (application) {
+        allowed = true;
+      }
+    }
+
+    if (!allowed) {
+      return res.status(403).json({
+        message:
+          "You are not authorized to access this CV.",
+      });
+    }
+
+    // Convert stored path:
+    // /uploads/cvs/14/14_v1.pdf
+    // into a real backend filesystem path.
+    const relativePath = cv.filePath.replace(
+      /^[/\\]+/,
+      ""
+    );
+
+    const absolutePath = path.resolve(
+      __dirname,
+      "..",
+      relativePath
+    );
+
+    // Basic path protection
+    const cvRoot = path.resolve(
+      __dirname,
+      "../uploads/cvs"
+    );
+
+    if (
+      !absolutePath.startsWith(
+        cvRoot + path.sep
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid CV file path.",
+      });
+    }
+
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      return res.status(404).json({
+        message: "CV file not found.",
+      });
+    }
+
+    return res.download(
+      absolutePath,
+      cv.fileName
+    );
+  } catch (error) {
+    console.error(
+      "Download CV error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to download CV.",
+    });
   }
 };
