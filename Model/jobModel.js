@@ -85,7 +85,6 @@ const jobSchema = new mongoose.Schema(
         "Hybrid",
         "Remote",
       ],
-
       default: "Office",
     },
 
@@ -103,6 +102,18 @@ const jobSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+
+    postedByName: {
+  type: String,
+  required: true,
+  trim: true,
+},
+
+postedByPosition: {
+  type: String,
+  required: true,
+  trim: true,
+},
 
     requirements: {
       type: [String],

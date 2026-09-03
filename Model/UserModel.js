@@ -45,37 +45,27 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-
-    companyRole: {
+    companyPosition: {
       type: String,
-      enum: [
-        "company_admin",
-        "recruiter",
-        "hiring_manager",
-      ],
-      default: null,
+      trim: true,
+      default: "",
+      required: function () {
+        return this.role === "company";
+      },
     },
 
-
-    companyName: {
-      type: String,
-      required: false,
-    },
-
-    companyDescription: {
-      type: String,
-      required: false,
-    },
 
     location: {
       city: {
         type: String,
-        required: true,
+        trim: true,
+        default: "",
       },
 
       country: {
         type: String,
-        required: true,
+        trim: true,
+        default: "",
       },
     },
 
@@ -85,19 +75,15 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-
     availableForWork: {
       type: Boolean,
-
       default: function () {
         return this.role === "candidate";
       },
     },
 
     otp: String,
-
     otpExpiry: Date,
-
     isVerified: {
       type: Boolean,
       default: false,
@@ -108,7 +94,21 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+userSchema.index(
+  {
+    companyId: 1,
+  },
+  {
+    unique: true,
+
+    partialFilterExpression: {
+      companyId: {
+        $type: "objectId",
+      },
+    },
+  }
+);
+
 module.exports = mongoose.model(
-  "User",
-  userSchema
+  "User", userSchema
 );
