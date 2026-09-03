@@ -28,10 +28,8 @@ exports.getUser = async (req, res) => {
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET_KEY ||
-        "nodejs"
+      process.env.JWT_SECRET_KEY
     );
-
  
     const user =
       await User.findById(
@@ -131,8 +129,7 @@ exports.updateUserProfile = async (
 
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET_KEY ||
-        "nodejs"
+      process.env.JWT_SECRET_KEY 
     );
 
     // --------------------------------------------------
