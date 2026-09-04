@@ -43,7 +43,15 @@ const userSchema = new mongoose.Schema(
       ref: "Company",
       default: null,
     },
- 
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    otpLastSentAt: {
+      type: Date,
+      default: null,
+    },
     location: {
       city: {
         type: String,
@@ -71,7 +79,11 @@ const userSchema = new mongoose.Schema(
       },
     },
 
-    otp: String,
+    otp: {
+  type: String,
+  default: null,
+},
+
     otpExpiry: Date,
     isVerified: {
       type: Boolean,
