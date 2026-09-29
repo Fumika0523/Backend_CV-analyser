@@ -24,22 +24,19 @@ const storage = multer.diskStorage({
   },
 });
 
+
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /pdf|doc|docx/;
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
+  // CV Analyser currently accepts PDF files only.
+  const isPdfExtension =
+    path.extname(file.originalname).toLowerCase() === ".pdf";
 
-  const mimetype =
-    file.mimetype === "application/pdf" ||
-    file.mimetype === "application/msword" ||
-    file.mimetype ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const isPdfMimeType =
+    file.mimetype === "application/pdf";
 
-  if (extname && mimetype) {
+  if (isPdfExtension && isPdfMimeType) {
     cb(null, true);
   } else {
-    cb(new Error("Only PDF and Word documents are allowed."));
+    cb(new Error("Only PDF files are allowed."));
   }
 };
 

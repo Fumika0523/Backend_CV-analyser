@@ -69,20 +69,27 @@ const userSchema = new mongoose.Schema(
       },
     },
 
-    role: {
-      type: String,
-      enum: ["candidate", "company"],
-      required: true,
-    },
 
-    availableForWork: {
-      type: Boolean,
-      default: function () {
-        return this.role === "candidate";
-      },
-    },
+role: {
+  type: String,
+  enum: ["candidate", "company"],
+  required: true,
+},
 
-    otp: String,
+// Controls whether the candidate appears in
+// recruiter/company candidate recommendations.
+availableForWork: {
+  type: Boolean,
+  default: function () {
+    return this.role === "candidate";
+  },
+},
+
+    otp: {
+  type: String,
+  default: null,
+},
+
     otpExpiry: Date,
     isVerified: {
       type: Boolean,

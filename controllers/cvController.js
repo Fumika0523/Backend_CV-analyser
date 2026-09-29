@@ -16,13 +16,84 @@ const ensureDirExists = async (dirPath) => {
     );
 };
 
+// ============================================
+// SECURITY: Validate the actual PDF file header
+// ============================================
+// Checking only:
+//   1. file extension (.pdf)
+//   2. MIME type (application/pdf)
+//
+// is not enough because those values can be spoofed.
+//
+// A genuine PDF starts with the magic bytes:
+//
+// %PDF-
+//
+// We read the beginning of the uploaded file and
+// verify that signature before sending the file
+// to CVAnalyse / pdf-parse.
+const isRealPDF = async (filePath) => {
+  // Open the temporary uploaded file
+  const fileHandle = await fs.open(filePath, "r");
+
+  try {
+    // We only need the first 5 bytes:
+    // %PDF-
+    const buffer = Buffer.alloc(5);
+
+    const { bytesRead } = await fileHandle.read(
+      buffer,
+      0,
+      5,
+      0
+    );
+
+    // File is too small to contain a PDF header
+    if (bytesRead < 5) {
+      return false;
+    }
+
+    return buffer.toString("ascii") === "%PDF-";
+  } finally {
+    // Always close the file, even if something fails
+    await fileHandle.close();
+  }
+};
+
+// ============================================
+// SECURITY/CLEANUP: Remove temporary upload
+// ============================================
+// Multer saves uploaded files in /uploads/temp
+// before the controller processes them.
+//
+// If validation or CV analysis fails, we should
+// remove the temporary file so unused files do
+// not accumulate on the server.
+const deleteTempFile = async (filePath) => {
+  if (!filePath) return;
+
+  try {
+    await fs.unlink(filePath);
+  } catch (error) {
+    // ENOENT means the file no longer exists.
+    // For example, uploadCV may already have moved
+    // the file into the candidate's CV directory.
+    if (error.code !== "ENOENT") {
+      console.error(
+        "Failed to delete temporary upload:",
+        error
+      );
+    }
+  }
+};
+
+
 //signed in user
 exports.uploadCV = async (req, res) => {
   try {
     console.log("=== Upload Started ===");
     console.log("req.file:", req.file);
-    console.log("req.body:", req.body);
-    console.log("req.user:", req.user);
+  
 
     // existing code...
     if (!req.file) {
@@ -33,6 +104,18 @@ exports.uploadCV = async (req, res) => {
       return res.status(400).json({ message: "Only PDF files are allowed" });
     }
 
+    // Verify the actual contents of the uploaded file.
+// Extension and MIME type alone can be spoofed.
+const validPDF = await isRealPDF(req.file.path);
+
+if (!validPDF) {
+  // Remove the invalid temporary upload
+await deleteTempFile(req.file.path);
+
+  return res.status(400).json({
+    message: "Invalid PDF file.",
+  });
+}
 
     // MongoDB _id from JWT , eg) "665fabc123..."
     const mongoUserId = req.user.id;
@@ -118,10 +201,20 @@ skills: analysis.skillsDetected || [],
       message: "CV uploaded successfully",
       cv,
     });
-  } catch (error) {
-    console.error("Upload CV error:", error);
-    res.status(500).json({ message: "Server error" });
+} catch (error) {
+  console.error("Upload CV error:", error);
+
+  // If Multer created a temporary file and the
+  // upload failed before it was successfully moved,
+  // remove the leftover temporary file.
+  if (req.file?.path) {
+    await deleteTempFile(req.file.path);
   }
+
+  return res.status(500).json({
+    message: "Server error",
+  });
+}
 };
 
 //guest upload and temporary stored the CV and when you signed up. it should link, it can be ID / temporary Id
@@ -147,6 +240,19 @@ exports.guestUploadCV = async (req, res) => {
         message: "Only PDF files are allowed",
       });
     }
+
+    // Verify the actual contents of the uploaded file.
+// Extension and MIME type alone can be spoofed.
+const validPDF = await isRealPDF(req.file.path);
+
+if (!validPDF) {
+  // Remove the invalid temporary upload
+  await fs.unlink(req.file.path).catch(() => {});
+
+  return res.status(400).json({
+    message: "Invalid PDF file.",
+  });
+}
 
     // const dataBuffer = await fs.readFile(req.file.path);
 
@@ -207,12 +313,17 @@ skills: analysis.skillsDetected || [],
 });
 
   } catch (error) {
-    console.error("Guest upload CV error:", error);
+  console.error("Guest upload CV error:", error);
 
-    return res.status(500).json({
-      message: "Server error",
-    });
+  // Remove the temporary upload when processing fails.
+  if (req.file?.path) {
+    await deleteTempFile(req.file.path);
   }
+
+  return res.status(500).json({
+    message: "Server error",
+  });
+}
 };
 
 exports.getLatestCV = async (req, res) => {
@@ -263,5 +374,102 @@ exports.getMyCVs = async (req, res) => {
   } catch (error) {
     console.error("Get my CVs error:", error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.downloadCV = async (req, res) => {
+  try {
+    const cv = await CV.findById(req.params.id);
+    if (!cv) {
+      return res.status(404).json({
+        message: "CV not found",
+      });
+    }
+
+    const user = req.user;
+    let allowed = false;
+
+    // Candidate can access their own CV
+    if (
+      user.role === "candidate" &&
+      user.userId === cv.candidateId
+    ) {
+      allowed = true;
+    }
+
+    // Company can access a CV only if an application
+    // belonging to that company references this CV.
+    if (
+      user.role === "company" &&
+      user.companyId
+    ) {
+      const application = await Application.findOne({
+        companyId: user.companyId,
+        cvId: cv._id,
+      });
+
+      if (application) {
+        allowed = true;
+      }
+    }
+
+    if (!allowed) {
+      return res.status(403).json({
+        message:
+          "You are not authorized to access this CV.",
+      });
+    }
+
+    // Convert stored path:
+    // /uploads/cvs/14/14_v1.pdf
+    // into a real backend filesystem path.
+    const relativePath = cv.filePath.replace(
+      /^[/\\]+/,
+      ""
+    );
+
+    const absolutePath = path.resolve(
+      __dirname,
+      "..",
+      relativePath
+    );
+
+    // Basic path protection
+    const cvRoot = path.resolve(
+      __dirname,
+      "../uploads/cvs"
+    );
+
+    if (
+      !absolutePath.startsWith(
+        cvRoot + path.sep
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid CV file path.",
+      });
+    }
+
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      return res.status(404).json({
+        message: "CV file not found.",
+      });
+    }
+
+    return res.download(
+      absolutePath,
+      cv.fileName
+    );
+  } catch (error) {
+    console.error(
+      "Download CV error:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to download CV.",
+    });
   }
 };

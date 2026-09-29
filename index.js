@@ -55,8 +55,40 @@ const startServer = async () => {
   app.use(require('./routes/jobAiRoutes'))
 
   app.use(require("./routes/jobRoutes"));
+const path = require("path");
 
-  app.use("/uploads", express.static("uploads"));
+// PROTECT PRIVATE CV FILES
+// CVs must NEVER be downloaded directly through:
+// /uploads/cvs/...
+//
+// Users must instead use:
+// GET /cv/:id/download
+//
+// That protected route checks:
+// - candidate owns the CV
+// - OR company has an application referencing the CV
+app.use("/uploads/cvs", (req, res) => {
+  return res.status(403).json({
+    message: "You are not allowed to access this CV.",
+  });
+});
+
+
+// PROTECT TEMPORARY UPLOADS
+// Temporary guest/upload files should not be publicly
+// accessible either.
+app.use("/uploads/temp", (req, res) => {
+  return res.status(403).json({
+    message: "Direct access to temporary files is not allowed.",
+  });
+});
+
+
+// Other non-sensitive files can still be served publicly.
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"))
+);
 
   app.use("/api",require('./routes/checkout'))
  
