@@ -5,6 +5,7 @@ const fs = require("fs/promises");
 const { default: PdfParse } = require("pdf-parse-new");
 const CVAnalyse = require("../services/CVAnalyse")
 const Skill = require('../Model/skillsModel')
+const Application = require("../Model/applicationModel");
 
 
 // fs.mkdir() >> Make directory
