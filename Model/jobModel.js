@@ -111,8 +111,8 @@ const jobSchema = new mongoose.Schema(
 
 postedByPosition: {
   type: String,
-  required: true,
   trim: true,
+  default: "",
 },
 
     requirements: {

@@ -322,19 +322,15 @@ exports.verifyOtp = async (req, res) => {
   try {
     const { _id, otp } = req.body;
 
-    // --------------------------------------------------
     // 1. Validate request
-    // --------------------------------------------------
-
+ 
     if (!_id || !otp) {
       return res.status(400).json({
         message: "_id and otp are required",
       });
     }
 
-    // --------------------------------------------------
     // 2. Find user
-    // --------------------------------------------------
 
     const user = await User.findById(_id);
 
@@ -345,9 +341,7 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------
     // 3. Check whether OTP has expired
-    // --------------------------------------------------
 
     /*
      * Check expiry before comparing the OTP.
@@ -365,22 +359,84 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------
     // 4. Check OTP
-    // --------------------------------------------------
+// Compare the OTP saved in the database
+// with the OTP the user typed.
+//
+// String(...) makes sure both values
+// are compared as strings.
+if (
+  String(user.otp) !==
+  String(otp)
+) {
 
-    if (
-      String(user.otp) !==
-      String(otp)
-    ) {
-      return res.status(400).json({
-        message: "Invalid OTP",
-      });
-    }
+  // The OTP is wrong.
+  // Increase the failed-attempt counter by 1.
+  //
+  // Example:
+  // 0 -> 1
+  // 1 -> 2
+  // 2 -> 3
+  user.otpAttempts += 1;
 
-    // --------------------------------------------------
+
+  // Check whether the user has now reached
+  // 5 failed attempts.
+  if (user.otpAttempts >= 5) {
+
+    // Remove the current OTP.
+    // This means that OTP can no longer be used.
+    user.otp = null;
+
+    // Remove the expiry time as well,
+    // because there is no active OTP anymore.
+    user.otpExpiry = null;
+
+
+    // Save the changes to MongoDB.
+    //
+    // Without this line, the changes above
+    // would only exist temporarily in Node.js
+    // and would NOT be stored in the database.
+    await user.save();
+
+
+    // Stop the function here and send
+    // an error response to the frontend.
+    //
+    // 429 means:
+    // "Too Many Requests"
+    return res.status(429).json({
+      message:
+        "Too many failed attempts. Please request a new OTP.",
+    });
+  }
+
+
+  // If we have NOT reached 5 attempts yet,
+  // save the new attempt count.
+  //
+  // Example:
+  // otpAttempts was 2
+  // now it becomes 3 in MongoDB.
+  await user.save();
+
+
+  // Return an error because the OTP was wrong.
+  //
+  // This also tells the user how many
+  // attempts are still available.
+  //
+  // Example:
+  // otpAttempts = 2
+  // 5 - 2 = 3 attempts remaining
+  return res.status(400).json({
+    message:
+      `Invalid OTP. ${5 - user.otpAttempts} attempts remaining.`,
+  });
+}
+
     // 5. Extra company account safety check
-    // --------------------------------------------------
 
     /*
      * Under the new architecture every company
@@ -398,9 +454,7 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------
     // 6. Mark account as verified
-    // --------------------------------------------------
 
     user.isVerified = true;
 
@@ -413,16 +467,12 @@ exports.verifyOtp = async (req, res) => {
 
     await user.save();
 
-    // --------------------------------------------------
     // 7. Generate authentication token
-    // --------------------------------------------------
 
     const token =
       generateToken(user);
 
-    // --------------------------------------------------
     // 8. Return authenticated user
-    // --------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -509,10 +559,33 @@ exports.resendOtp = async (req, res) => {
       return res.status(400).json({ message: "User not found" });
     }
 
-    const otp = generateOTP();
+    // If the user requested an OTP less than 60 seconds ago,
+// do not send another one yet.
+if (
+  user.otpResendAvailableAt &&
+  user.otpResendAvailableAt > Date.now()
+) {
+  return res.status(429).json({
+    message:
+      "Please wait before requesting another OTP.",
+  });
+}
 
-    user.otp = otp;
-    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+const otp = generateOTP();
+
+// Save the new OTP.
+user.otp = otp;
+
+// OTP is valid for 5 minutes.
+user.otpExpiry =
+  Date.now() + 5 * 60 * 1000;
+
+// New OTP starts with 0 failed attempts.
+user.otpAttempts = 0;
+
+// User must wait 60 seconds before requesting another OTP.
+user.otpResendAvailableAt =
+  Date.now() + 60 * 1000;
 
     await user.save();
     await sendEmail({

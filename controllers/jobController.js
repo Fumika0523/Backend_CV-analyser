@@ -45,6 +45,46 @@ exports.createJobPost =
           });
       }
 
+      
+// ====================================================
+// VALIDATE JOB POSTING PERSON
+// ====================================================
+
+/*
+ * We retrieve the name and position from the
+ * authenticated User document.
+ *
+ * The frontend is NOT allowed to decide who
+ * created the job.
+ *
+ * This prevents mismatches between the
+ * registered account and the job creator.
+ */
+
+const posterName = [
+  user.firstName,
+  user.lastName,
+]
+  .filter(Boolean)
+  .join(" ")
+  .trim();
+
+const posterPosition =
+  user.companyPosition?.trim() || "";
+
+if (!posterName) {
+  return res.status(400).json({
+    message:
+      "Please complete your name in Profile Settings.",
+  });
+}
+
+if (!posterPosition) {
+  return res.status(400).json({
+    message:
+      "Please add your position/job title in Profile Settings before posting a job.",
+  });
+}
       const company =
         await Company.findById(
           user.companyId
@@ -80,24 +120,19 @@ exports.createJobPost =
       } = req.body;
 
       if (
-        !company.companyUrl
-          ?.trim()
+        !company.companyUrl?.trim()
       ) {
-        const submittedUrl =
-          companyUrl?.trim();
+        const submittedUrl = companyUrl?.trim();
 
         if (!submittedUrl) {
           return res
-            .status(400)
-            .json({
-              message:
-                "Please add your company website before posting a job.",
+            .status(400).json({
+              message: "Please add your company website before posting a job.",
             });
         }
 
         try {
-          const parsedUrl =
-            new URL(
+          const parsedUrl = new URL(
               submittedUrl
             );
 
@@ -115,16 +150,12 @@ exports.createJobPost =
           }
         } catch {
           return res
-            .status(400)
-            .json({
-              message:
-                "Please enter a valid company website URL.",
+            .status(400).json({
+              message: "Please enter a valid company website URL.",
             });
         }
 
-        company.companyUrl =
-          submittedUrl;
-
+        company.companyUrl = submittedUrl;
         await company.save();
       }
 
@@ -154,37 +185,50 @@ exports.createJobPost =
         };
       }
 
-const posterName =
-  `${user.firstName || ""} ${
-    user.lastName || ""
-  }`.trim();
+      
+// ====================================================
+// CREATE JOB WITH VERIFIED POSTING PERSON
+// ====================================================
 
-const job =
-  await Job.create({
-    companyId: company._id,
-    createdBy: user._id,
-    postedByName: posterName,
-    postedByPosition: user.companyPosition,
-    title,
-    jobType,
-    workMode,
-    education,
-    experience,
-    keySkills,
-    location:
-    formattedLocation,
-    responsibilities,
-    roleSummary,
-    compensationBenefits,
-    requirements,
-    category,
-    industry,
-    applicationEndDate,
-    salary,
-    vacancies:
-    Number(vacancies) || 1,
-    filledPositions: 0,
-   });
+/*
+ * posterName and posterPosition have already
+ * been validated earlier in this controller.
+ *
+ * Never obtain these values directly from req.body.
+ */
+
+const job = await Job.create({
+  // Company that owns the job.
+  companyId: company._id,
+
+  // Actual authenticated account that created the job.
+  createdBy: user._id,
+
+  // Snapshot of the posting person's identity.
+  postedByName: posterName,
+  postedByPosition: posterPosition,
+
+  // Job description information.
+  title,
+  jobType,
+  workMode,
+  education,
+  experience,
+  keySkills,
+  location: formattedLocation,
+  responsibilities,
+  roleSummary,
+  compensationBenefits,
+  requirements,
+  category,
+  industry,
+  applicationEndDate,
+  salary,
+
+  vacancies: Number(vacancies) || 1,
+  filledPositions: 0,
+});
+
       return res.status(201).json({
       message: "Job created successfully",
           job,
@@ -386,9 +430,17 @@ exports.updateJobPost = async (
       ...req.body,
     };
 
-    delete updateData.companyId;
-    delete updateData.createdBy;
-    delete updateData.filledPositions;
+    // Prevent modification of protected metadata.
+delete updateData.companyId;
+delete updateData.createdBy;
+
+// These represent the person who originally posted the JD.
+// They should not change when the JD is edited.
+delete updateData.postedByName;
+delete updateData.postedByPosition;
+
+// Controlled by the application workflow.
+delete updateData.filledPositions;
 
     if (
       updateData.vacancies !== undefined
@@ -1212,9 +1264,7 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
           "Company",
 
         companyUrl:
-          job.companyUrl ||
-          job.companyId?.companyUrl ||
-          "",
+  job.companyId?.companyUrl || "",
 
         location: job.location,
 

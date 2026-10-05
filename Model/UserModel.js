@@ -38,22 +38,27 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-
     companyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
       default: null,
     },
 
-    companyPosition: {
-      type: String,
-      trim: true,
-      default: "",
-      required: function () {
-        return this.role === "company";
-      },
-    },
-
+ // Professional position of the registered company user.
+//
+// Examples:
+// - HR Manager
+// - Recruitment Consultant
+// - Managing Director
+//
+// This can be completed later in Profile Settings.
+// It becomes mandatory when publishing a JD.
+companyPosition: {
+  type: String,
+  trim: true,
+  maxlength: 120,
+  default: "",
+},
 
     location: {
       city: {
@@ -68,7 +73,6 @@ const userSchema = new mongoose.Schema(
         default: "",
       },
     },
-
 
 role: {
   type: String,
@@ -90,6 +94,16 @@ availableForWork: {
   default: null,
 },
 
+otpResendAvailableAt: {
+  type: Date,
+  default: null,
+},
+
+otpAttempts: {
+  type: Number,
+  default: 0,
+},
+
     otpExpiry: Date,
     isVerified: {
       type: Boolean,
@@ -101,20 +115,9 @@ availableForWork: {
   }
 );
 
-userSchema.index(
-  {
-    companyId: 1,
-  },
-  {
-    unique: true,
-
-    partialFilterExpression: {
-      companyId: {
-        $type: "objectId",
-      },
-    },
-  }
-);
+userSchema.index({
+  companyId: 1,
+});
 
 module.exports = mongoose.model(
   "User", userSchema
