@@ -11,15 +11,15 @@ const {
   resetPassword,
   checkEmail
 } = require("../controllers/authController.js");
+
 const validateEmailForOtp = require("../utils/validateEmail");
 
-
 // AUTH ROUTES
-router.post("/signup", signUp);
-router.post("/signin", signIn);
-router.post("/check-email", checkEmail);
-router.post("/verify-otp", verifyOtp);
-router.post("/resend-otp", resendOtp);
+router.post("/signup", signUp)
+router.post("/signin", signIn)
+router.post("/check-email", checkEmail)
+router.post("/verify-otp", verifyOtp)
+router.post("/resend-otp", resendOtp)
 
 // FORGOT PASSWORD ROUTES
 router.post("/forgot-password", forgotPassword);

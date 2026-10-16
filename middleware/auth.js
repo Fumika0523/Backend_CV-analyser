@@ -24,7 +24,7 @@ const auth = async (req, res, next) => {
       process.env.JWT_SECRET_KEY,
     );
 
-    // Fetch user from DB
+    // Fetch user from DB amd Exclude password
     const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {

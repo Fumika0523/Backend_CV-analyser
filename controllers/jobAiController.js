@@ -441,25 +441,36 @@ Rules:
       missingFields: jobData.missingFields,
       warnings: jobData.warnings,
     });
-  } catch (error) {
-    console.error(
-      "Job-description analysis error:",
-      error
-    );
 
-    return res.status(502).json({
+} catch (error) {
+  console.error(
+    "Job-description analysis error:",
+    error
+  );
+
+  // Get the status code from the AI provider.
+  const errorStatus =
+    error.statusCode || error.status;
+
+  // 429 means Gemini has reached a rate or quota limit.
+  if (errorStatus === 429) {
+    return res.status(429).json({
       message:
-        "The AI could not analyse this job description.",
-
-      /*
-       * Do not expose provider details in production.
-       */
-      details:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+        "AI analysis is temporarily unavailable due to a usage limit. Please try again later.",
     });
-  } finally {
+  }
+
+  // Handle other AI analysis errors.
+  return res.status(502).json({
+    message:
+      "The AI could not analyse this job description.",
+
+    details:
+      process.env.NODE_ENV === "development"
+        ? error.message
+        : undefined,
+  });
+} finally {
     /*
      * The PDF is used only for temporary analysis.
      * Delete it whether the analysis succeeds or fails.

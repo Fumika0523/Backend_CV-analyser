@@ -387,6 +387,7 @@ exports.downloadCV = async (req, res) => {
       });
     }
 
+    // req.user contains the full user data, including userId and companyId
     const user = req.user;
     let allowed = false;
 

@@ -79,12 +79,12 @@ if (!posterName) {
   });
 }
 
-if (!posterPosition) {
-  return res.status(400).json({
-    message:
-      "Please add your position/job title in Profile Settings before posting a job.",
-  });
-}
+// if (!posterPosition) {
+//   return res.status(400).json({
+//     message:
+//       "Please add your position/job title in Profile Settings before posting a job.",
+//   });
+// }
       const company =
         await Company.findById(
           user.companyId

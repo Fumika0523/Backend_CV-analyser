@@ -289,6 +289,67 @@ exports.signUp = async (req, res) => {
   }
 };
 
+//sign in
+exports.signIn = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({ message: "Email not found" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid password" });
+    }
+
+    if (!user.isVerified) {
+      const otp = generateOTP()
+      user.otp = otp
+      user.otpExpiry = Date.now() + 5 * 60 * 1000
+
+      await user.save()
+      await sendEmail({
+        // Recipient' email address
+        to: user.email,
+
+        // EMail subject
+        subject: "Your  SkillfulJobs.ai verification code",
+
+        // Email content
+        html: otpEmailTemplate(otp),
+      })
+
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email. A new OTP has been sent.",
+        _id: user._id,
+        email: user.email
+      })
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token: generateToken(user),
+      user: {
+        _id: user._id,
+        userId: user.userId,
+        name: user.firstName,
+        email: user.email,
+        role: user.role,
+      },
+    });
+    console.log("Login successful", user)
+  } catch (error) {
+    console.error("SignIn error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 exports.checkEmail = async (req, res) => {
   try {
     const result = await validateEmailForOtp(req.body.email);
@@ -316,6 +377,9 @@ exports.checkEmail = async (req, res) => {
   }
 };
 
+//  Receive user ID + OTP =>>> Find user and check expiry =>>> Is the OTP correct?
+// No >> Inscrease failed attempts ( At 5 attempts, invalidate OTP)
+// Yes >> Check company link if needed >> Verify account and clear OTP fields. >> Generate JWT and return user
 
 // VERIFY OTP
 exports.verifyOtp = async (req, res) => {
@@ -332,8 +396,33 @@ exports.verifyOtp = async (req, res) => {
 
     // 2. Find user
 
-    const user = await User.findById(_id);
+const user = await User.findById(_id);
+// Check the ID received from Postman
+console.log("Requested ID:", _id);
 
+// Count users in the connected database
+console.log(
+  "Total users:",
+  await User.countDocuments()
+);
+
+// Show the first 10 stored user IDs
+const users = await User.find({})
+  .select("_id")
+  .limit(10);
+
+console.log(
+  "Stored IDs:",
+  users.map((u) => u._id.toString())
+);
+// DEBUG: Check which database the backend is using
+console.log("Database:", User.db.name);
+
+// DEBUG: Check the MongoDB collection
+console.log("Collection:", User.collection.name);
+
+// DEBUG: Check whether the user was found
+console.log("User found:", Boolean(user));
     if (!user) {
       return res.status(404).json({
         message:
@@ -379,40 +468,24 @@ if (
   // 2 -> 3
   user.otpAttempts += 1;
 
+// If the user enters the wrong OTP 5 times
+if (user.otpAttempts >= 5) {
 
-  // Check whether the user has now reached
-  // 5 failed attempts.
-  if (user.otpAttempts >= 5) {
+  // Invalidate the current OTP
+  user.otp = null;
 
-    // Remove the current OTP.
-    // This means that OTP can no longer be used.
-    user.otp = null;
+  // Remove the OTP expiry date
+  user.otpExpiry = null;
 
-    // Remove the expiry time as well,
-    // because there is no active OTP anymore.
-    user.otpExpiry = null;
+  // Save changes to MongoDB
+  await user.save();
 
-
-    // Save the changes to MongoDB.
-    //
-    // Without this line, the changes above
-    // would only exist temporarily in Node.js
-    // and would NOT be stored in the database.
-    await user.save();
-
-
-    // Stop the function here and send
-    // an error response to the frontend.
-    //
-    // 429 means:
-    // "Too Many Requests"
-    return res.status(429).json({
-      message:
-        "Too many failed attempts. Please request a new OTP.",
-    });
-  }
-
-
+  // Tell the user to request a new OTP
+  return res.status(429).json({
+    message:
+      "Too many failed attempts. Please request a new OTP.",
+  });
+}
   // If we have NOT reached 5 attempts yet,
   // save the new attempt count.
   //
@@ -455,17 +528,23 @@ if (
     }
 
     // 6. Mark account as verified
+// Mark account as verified
+user.isVerified = true;
 
-    user.isVerified = true;
+// Delete the used OTP
+user.otp = null;
 
-    /*
-     * OTP should no longer be usable once verification
-     * has succeeded.
-     */
-    user.otp = null;
-    user.otpExpiry = null;
+// Remove its expiry date
+user.otpExpiry = null;
 
-    await user.save();
+// Reset incorrect attempts
+user.otpAttempts = 0;
+
+// Clear the resend cooldown
+user.otpResendAvailableAt = null;
+
+// Save changes to MongoDB
+await user.save();
 
     // 7. Generate authentication token
 
@@ -562,6 +641,8 @@ exports.resendOtp = async (req, res) => {
     // If the user requested an OTP less than 60 seconds ago,
 // do not send another one yet.
 if (
+  // Does the user have a resend cooldown deadline saved in MongoDB?
+  // If the user has a resend deadline AND that deadline is later than the current time, stop them from requesting another OTP.
   user.otpResendAvailableAt &&
   user.otpResendAvailableAt > Date.now()
 ) {
@@ -603,57 +684,6 @@ user.otpResendAvailableAt =
   }
 };
 
-//sign in
-exports.signIn = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(400).json({ message: "Email not found" });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid password" });
-    }
-
-    if (!user.isVerified) {
-      const otp = generateOTP()
-      user.otp = otp
-      user.otpExpiry = Date.now() + 5 * 60 * 1000
-
-      await user.save()
-      await sendEmail(user.email, otp)
-
-      return res.status(403).json({
-        success: false,
-        message: "Please verify your email. A new OTP has been sent.",
-        _id: user._id,
-        email: user.email
-      })
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Login successful",
-      token: generateToken(user),
-      user: {
-        _id: user._id,
-        userId: user.userId,
-        name: user.firstName,
-        email: user.email,
-        role: user.role,
-      },
-    });
-    console.log("Login successful", user)
-  } catch (error) {
-    console.error("SignIn error:", error);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
 
 // 1. Forgot password - check email and send OTP
 exports.forgotPassword = async (req, res) => {

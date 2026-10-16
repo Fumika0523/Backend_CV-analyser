@@ -6,7 +6,8 @@ const dotenv = require('dotenv')
 
 dotenv.config();
 
-const Port = process.env.PORT || 8002
+const Port = 8002
+console.log("Port:", Port)
 
 const cors = require('cors')
 
