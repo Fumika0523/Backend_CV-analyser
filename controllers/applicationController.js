@@ -8,7 +8,7 @@ const {
   candidateApplicationTemplate,
   companyApplicationTemplate,
 } = require("../utils/emailTemplates");
-
+const mongoose = require("mongoose");
 
 // ======================================================
 // HELPER: NORMALIZE SKILL
@@ -299,7 +299,6 @@ const applyForJob = async (req, res) => {
 
     const currentDate = new Date();
 
-
     if (
       job.status !== "Open" ||
       new Date(job.applicationEndDate) <
@@ -312,7 +311,6 @@ const applyForJob = async (req, res) => {
           "This job is no longer open for applications",
       });
     }
-
 
     const alreadyApplied =
       await Application.findOne({
@@ -328,15 +326,35 @@ const applyForJob = async (req, res) => {
       });
     }
 
+  // Validate the CV ID if one was provided.
+    if (cvId && !mongoose.isValidObjectId(cvId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid CV ID.",
+      });
+    }
+
+    // Find the candidate's CV.
     const cv = cvId
-      ? await CV.findById(cvId).lean()
+      ? await CV.findOne({
+          _id: cvId,
+          candidateId: user.userId,
+        }).lean()
       : await CV.findOne({
           candidateId: user.userId,
         })
-          .sort({
-            version: -1,
-          })
+          .sort({ version: -1 })
           .lean();
+
+    // A candidate must have a CV to apply.
+    if (!cv) {
+      return res.status(400).json({
+        success: false,
+        message: cvId
+          ? "The selected CV was not found or does not belong to your account."
+          : "Please upload a CV before applying for a job.",
+      });
+    }
 
     const candidateSkills =
       cv?.skills ||
@@ -361,36 +379,18 @@ const applyForJob = async (req, res) => {
    
     const application =
       await Application.create({
-        candidateId:
-          user.userId,
-
-        companyId:
-          job.companyId._id,
-
-        jobId:
-          job._id,
-
-        title:
-          job.title,
-
-        companyName:
-          job.companyId?.companyName ||
+        candidateId: user.userId,
+        companyId: job.companyId._id,
+        jobId: job._id,
+        title: job.title,
+        companyName: job.companyId?.companyName ||
           "Company",
-
-        cvId:
-          cv?._id || null,
-
-        status:
-          "pending",
-
+        cvId: cv._id,
+        status: "pending",
         matchScore,
-
         matchedSkills,
-
         missingSkills,
-
         locationMatch,
-
         note: "",
       });
 
@@ -414,10 +414,8 @@ const applyForJob = async (req, res) => {
 
     await sendEmail({
       to: user.email,
-
       subject:
         "Application submitted successfully",
-
       html:
         candidateHtml,
     });
@@ -425,10 +423,8 @@ const applyForJob = async (req, res) => {
     if (job.createdBy?.email) {
       await sendEmail({
         to: job.createdBy.email,
-
         subject:
           "New job application received",
-
         html:
           companyHtml,
       });
@@ -436,10 +432,8 @@ const applyForJob = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-
       message:
         "Application submitted successfully",
-
       application,
     });
   } catch (error) {
