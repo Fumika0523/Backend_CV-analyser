@@ -4,6 +4,10 @@ const User = require("../Model/UserModel");
 const CV = require("../Model/CVModel");
 const Application = require("../Model/applicationModel");
 const Company = require("../Model/companyModel");
+const {
+  getVerifiedJobLocation,
+  VerifiedJobLocationError,
+} = require("../services/verifiedJobLocation");
 
 
 // CREATE JOB POST
@@ -107,6 +111,7 @@ if (!posterName) {
         experience,
         keySkills,
         location,
+        locationToken,
         companyUrl,
         responsibilities,
         roleSummary,
@@ -118,6 +123,13 @@ if (!posterName) {
         salary,
         vacancies,
       } = req.body;
+
+      const verifiedLocation =
+        await getVerifiedJobLocation({
+          location,
+          locationToken,
+          workMode,
+        });
 
       if (
         !company.companyUrl?.trim()
@@ -159,33 +171,6 @@ if (!posterName) {
         await company.save();
       }
 
-      let formattedLocation =
-        location;
-
-      if (
-        typeof location ===
-        "string"
-      ) {
-        const [
-          city,
-          country,
-        ] = location
-          .split(",")
-          .map(
-            (item) =>
-              item.trim()
-          );
-
-        formattedLocation = {
-          city:
-            city || "",
-
-          country:
-            country || "",
-        };
-      }
-
-      
 // ====================================================
 // CREATE JOB WITH VERIFIED POSTING PERSON
 // ====================================================
@@ -215,7 +200,7 @@ const job = await Job.create({
   education,
   experience,
   keySkills,
-  location: formattedLocation,
+  location: verifiedLocation,
   responsibilities,
   roleSummary,
   compensationBenefits,
@@ -234,6 +219,12 @@ const job = await Job.create({
           job,
         });
     } catch (error) {
+      if (error instanceof VerifiedJobLocationError) {
+        return res.status(error.status).json({
+          message: error.message,
+          code: error.code,
+        });
+      }
       console.error(
         "Create job error:",
         error

@@ -123,12 +123,40 @@ postedByPosition: {
     location: {
       city: {
         type: String,
-        required: true,
+        required: function () {
+          return !this.location?.locationType ||
+            this.location.locationType === "city";
+        },
       },
 
       country: {
         type: String,
         required: true,
+      },
+
+      county: {
+        type: String,
+        trim: true,
+      },
+
+      region: {
+        type: String,
+        trim: true,
+      },
+
+      locationType: {
+        type: String,
+        enum: ["city", "county", "region", "country"],
+      },
+
+      displayName: {
+        type: String,
+        trim: true,
+      },
+
+      providerPlaceId: {
+        type: String,
+        trim: true,
       },
     },
 

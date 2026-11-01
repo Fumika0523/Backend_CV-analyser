@@ -56,6 +56,8 @@ const startServer = async () => {
   app.use(require('./routes/jobAiRoutes'))
 
   app.use(require("./routes/jobRoutes"));
+
+  app.use(require("./routes/locationRoutes"));
 const path = require("path");
 
 // PROTECT PRIVATE CV FILES
