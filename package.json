@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test tests/*.test.js",
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "test": "node --test",
+    "start": "node init && node index.js",
+    "dev": "node init && nodemon index.js"
   },
   "keywords": [],
   "author": "",

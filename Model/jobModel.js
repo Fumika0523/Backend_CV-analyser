@@ -121,13 +121,49 @@ postedByPosition: {
     },
 
     location: {
-      city: {
-        type: String,
-        required: function () {
-          return !this.location?.locationType ||
-            this.location.locationType === "city";
-        },
-      },
+  
+city: {
+  type: String,
+
+  required: function () {
+    // Is Mongoose validating an update query?
+    const isUpdateQuery =
+      typeof this.getUpdate === "function";
+
+    // Get the update payload if this is a query.
+    const update = isUpdateQuery
+      ? this.getUpdate()
+      : null;
+
+    // Check both nested and dotted update formats.
+    const locationType = isUpdateQuery
+      ? (
+          update?.$set?.location?.locationType ??
+          update?.$set?.["location.locationType"] ??
+          update?.location?.locationType ??
+          update?.["location.locationType"] ??
+          this.get("location.locationType")
+        )
+      : this.location?.locationType;
+
+    // Temporary diagnostic information.
+    console.log("=== CITY VALIDATOR DEBUG ===", {
+      isUpdateQuery,
+      locationType,
+      locationUpdateKeys: Object.keys(
+        update?.$set ?? update ?? {}
+      ).filter(
+        (key) =>
+          key === "location" ||
+          key.startsWith("location.")
+      ),
+    });
+
+    // Require city for city and legacy locations.
+    // Country, county and region locations may omit city.
+    return !locationType || locationType === "city";
+  },
+},
 
       country: {
         type: String,
@@ -160,6 +196,15 @@ postedByPosition: {
       },
     },
 
+      county: {
+    type: String,
+    default: "",
+  },
+
+  state: {
+    type: String,
+    default: "",
+  },
     responsibilities: {
       type: [String],
       default: [],
