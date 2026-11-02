@@ -74,3 +74,15 @@ test("explicit non-city Remote locations may omit city", () => {
     assert.equal(job.location.city, undefined);
   }
 });
+
+test("top-level county and state stay separate from nested location fields", () => {
+  const job = makeJob({ city: "London", country: "United Kingdom", county: "Nested county" });
+  assert.equal(job.county, "");
+  assert.equal(job.state, "");
+  job.county = "Existing county";
+  job.state = "Existing state";
+  assert.equal(job.validateSync(), undefined);
+  assert.equal(job.county, "Existing county");
+  assert.equal(job.state, "Existing state");
+  assert.equal(job.location.county, "Nested county");
+});

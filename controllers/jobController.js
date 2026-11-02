@@ -8,6 +8,9 @@ const {
   getVerifiedJobLocation,
   VerifiedJobLocationError,
 } = require("../services/verifiedJobLocation");
+const {
+  validateJobLocation,
+} = require("../utils/jobLocation");
 
 
 // CREATE JOB POST
@@ -239,7 +242,6 @@ const job = await Job.create({
     }
   };
 
-
 // GET ALL PUBLIC JOBS
 exports.getAllJobPosts = async (req, res) => {
   try {
@@ -277,9 +279,7 @@ exports.getAllJobPosts = async (req, res) => {
   }
 };
 
-
 // GET MY COMPANY JOBS
-
 exports.getMyCompanyJobPosts = async (
   req,
   res
@@ -334,7 +334,6 @@ exports.getMyCompanyJobPosts = async (
   }
 };
 
-
 // GET SINGLE JOB
 exports.getSingleJobPost = async (
   req,
@@ -368,12 +367,8 @@ exports.getSingleJobPost = async (
   }
 };
 
-
 // UPDATE JOB
-exports.updateJobPost = async (
-  req,
-  res
-) => {
+exports.updateJobPost = async (req, res) => {
   try {
   
     const user = await User.findById(
@@ -417,9 +412,37 @@ exports.updateJobPost = async (
       });
     }
 
-    const updateData = {
-      ...req.body,
-    };
+  
+// Only these job fields can be updated by a company.
+const allowedFields = [
+  "title",
+  "jobType",
+  "workMode",
+  "education",
+  "experience",
+  "keySkills",
+  "location",
+  "salary",
+  "responsibilities",
+  "requirements",
+  "roleSummary",
+  "compensationBenefits",
+  "category",
+  "industry",
+  "applicationEndDate",
+  "vacancies",
+];
+
+
+// Start with an empty object.
+const updateData = {};
+
+// Copy only permitted fields from req.body.
+for (const field of allowedFields) {
+  if (Object.hasOwn(req.body, field)) {
+    updateData[field] = req.body[field];
+  }
+}
 
     // Prevent modification of protected metadata.
 delete updateData.companyId;
@@ -440,22 +463,79 @@ delete updateData.filledPositions;
         Number(updateData.vacancies) || 1;
     }
 
-    if (
-      typeof updateData.location ===
-      "string"
-    ) {
-      const [city, country] =
-        updateData.location
-          .split(",")
-          .map((item) =>
-            item.trim()
-          );
 
-      updateData.location = {
-        city: city || "",
-        country: country || "",
-      };
-    }
+// Check whether the request includes a location.
+if (Object.hasOwn(updateData, "location")) {
+
+  // Read the existing location from MongoDB.
+  const existingLocationText = [
+    job.location?.city,
+    job.location?.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  // Check whether the frontend sent the same
+  // location text that is already saved.
+  const isUnchangedLocation =
+    typeof updateData.location === "string" &&
+    updateData.location.trim().toLowerCase() ===
+      existingLocationText.toLowerCase();
+
+  if (isUnchangedLocation) {
+    // Keep the existing MongoDB location.
+    // Do not overwrite its Geoapify metadata.
+    delete updateData.location;
+
+  } else {
+
+    // A new location must be verified by Geoapify.
+    updateData.location =
+      await getVerifiedJobLocation({
+        location: updateData.location,
+        locationToken: req.body.locationToken,
+        workMode: updateData.workMode ?? job.workMode,
+      });
+  }
+}
+
+// Use the new location if provided.
+// Otherwise, keep the existing job location.
+const finalLocation =
+  Object.hasOwn(updateData, "location")
+    ? updateData.location
+    : job.location;
+
+// Use the new work mode if provided.
+// Otherwise, keep the existing work mode.
+const finalWorkMode =
+  Object.hasOwn(updateData, "workMode")
+    ? updateData.workMode
+    : job.workMode;
+
+// Validate the final combination.
+const locationValidation =
+  validateJobLocation(
+    finalLocation,
+    finalWorkMode
+  );
+
+// Reject an incompatible location/work mode.
+if (!locationValidation.valid) {
+  return res.status(400).json({
+    message: locationValidation.errors[0],
+    code: "INCOMPATIBLE_LOCATION",
+  });
+}
+// console.log("=== EDIT JOB LOCATION DEBUG ===");
+
+// console.log({
+//   workMode: updateData.workMode,
+//   locationIncluded: Object.hasOwn(updateData, "location"),
+//   locationType: updateData.location?.locationType,
+//   city: updateData.location?.city,
+//   country: updateData.location?.country,
+// });
 
     const updatedJob =
       await Job.findByIdAndUpdate(
@@ -473,6 +553,14 @@ delete updateData.filledPositions;
       job: updatedJob,
     });
   } catch (error) {
+    
+if (error instanceof VerifiedJobLocationError) {
+  return res.status(error.status).json({
+    message: error.message,
+    code: error.code,
+  });
+}
+
     console.error(
       "Update job error:",
       error
@@ -485,7 +573,6 @@ delete updateData.filledPositions;
     });
   }
 };
-
 
 // CLOSE JOB
 exports.deleteJobPost = async (
@@ -553,7 +640,6 @@ exports.deleteJobPost = async (
     });
   }
 };
-
 
 
 // HELPER: NORMALIZE COUNTRY
@@ -697,10 +783,8 @@ const calculateMatch = (
   };
 };
 
-
 // GET MATCHED CANDIDATES FOR COMPANY JOB:
 // A Company opens one of their jobs and asks - "Which candidates match this job?"
-
 exports.getMatchedCandidatesForJob = async (req, res) => {
   try {
     const { jobId } = req.params;
@@ -1122,9 +1206,7 @@ exports.getMatchedCandidatesForJob = async (req, res) => {
   }
 };
 
-
 // GET MATCHED JOBS FOR CANDIDATE
-
 exports.getMatchedJobsForCandidate = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -1303,7 +1385,6 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
     });
   }
 };
-
 
 // GET MATCHED JOBS FOR GUEST
 exports.getMatchedJobsForGuest = async (req, res) => {
