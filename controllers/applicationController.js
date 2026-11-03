@@ -715,23 +715,9 @@ const getRecommendedCandidates = async (req, res) => {
               candidate.lastName || ""
             }`.trim(),
 
-          /*
-           * TEMPORARY:
-           *
-           * We'll remove this during
-           * Candidate Privacy work.
-           */
-          candidateEmail:
-            candidate.email,
+          jobTitle: job.title,
 
-          jobTitle:
-            job.title,
-
-          jobId:
-            job._id,
-
-          cvFilePath:
-            cv.filePath,
+          jobId: job._id,
 
           matchScore,
 

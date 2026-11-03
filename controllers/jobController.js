@@ -1128,15 +1128,6 @@ exports.getMatchedCandidatesForJob = async (req, res) => {
           }`.trim() ||
           `Candidate ${candidateId}`,
 
-        /*
-         * TEMPORARY.
-         *
-         * We'll remove candidate contact
-         * information during the privacy task.
-         */
-        email:
-          candidate.email || "",
-
         candidateLocation:
           candidate.location || null,
 
@@ -1167,8 +1158,6 @@ exports.getMatchedCandidatesForJob = async (req, res) => {
 
         matchScore,
 
-        cvPath:
-          cv.filePath || null,
       });
     }
 
