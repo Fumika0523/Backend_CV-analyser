@@ -2,7 +2,7 @@ const Application = require("../Model/applicationModel");
 const User = require("../Model/UserModel");
 const Job = require("../Model/jobModel");
 const sendEmail = require("../utils/sendEmail");
-const CV = require("../Model/CVModel");
+const CV = require("../Model/CvModel");
 const Skill = require("../Model/skillsModel");
 const {
   candidateApplicationTemplate,
@@ -240,6 +240,87 @@ const calculateMatch = (
 // ======================================================
 // APPLY FOR JOB
 // ======================================================
+
+// Preview the exact application score without creating an application.
+const previewApplicationMatch = async (req, res) => {
+  try {
+    const { jobId, cvId } = req.body;
+    if (!mongoose.isValidObjectId(jobId) || !mongoose.isValidObjectId(cvId)) {
+      return res.status(400).json({ message: "Valid job and CV IDs are required." });
+    }
+    const user = await User.findById(req.user.id).lean();
+    if (!user || user.role !== "candidate") {
+      return res.status(403).json({ message: "Only candidates can preview an application match." });
+    }
+    const cv = await CV.findOne({ _id: cvId, candidateId: user.userId }).lean();
+    if (!cv) {
+      return res.status(404).json({ message: "The selected CV was not found or does not belong to your account." });
+    }
+    const job = await Job.findById(jobId).populate("companyId", "isActive").lean();
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    if (job.companyId?.isActive === false || job.status !== "Open" ||
+        new Date(job.applicationEndDate) < new Date() || job.filledPositions >= job.vacancies) {
+      return res.status(400).json({ message: "This job is no longer open for applications" });
+    }
+    const match = calculateMatch(
+      cv.skills || cv.skillsDetected || [], job.keySkills || [], user.location, job.location
+    );
+    return res.status(200).json(match);
+  } catch {
+    console.error("Application score preview failed.");
+    return res.status(500).json({ message: "Unable to preview application match." });
+  }
+};
+
+// Score a bounded set of jobs for one owned CV, without recommendation filters.
+const previewApplicationMatches = async (req, res) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: "Please sign in to preview application matches." });
+    }
+    const { jobIds, cvId } = req.body || {};
+    const validId = (value) => typeof value === "string" &&
+      /^[a-f0-9]{24}$/i.test(value) && mongoose.isValidObjectId(value);
+    if (!validId(cvId)) {
+      return res.status(400).json({ message: "A valid CV ID is required." });
+    }
+    if (!Array.isArray(jobIds) || jobIds.length === 0 || !jobIds.every(validId)) {
+      return res.status(400).json({ message: "jobIds must be a non-empty array of valid job IDs." });
+    }
+    const uniqueJobIds = [...new Set(jobIds.map((id) => id.toLowerCase()))];
+    if (uniqueJobIds.length > 50) {
+      return res.status(400).json({ message: "A maximum of 50 unique job IDs is allowed." });
+    }
+    const user = await User.findById(req.user.id).select("role userId location").lean();
+    if (!user || user.role !== "candidate") {
+      return res.status(403).json({ message: "Only candidates can preview application matches." });
+    }
+    const cv = await CV.findOne({ _id: cvId, candidateId: user.userId })
+      .select("skills skillsDetected").lean();
+    if (!cv) {
+      return res.status(404).json({ message: "The selected CV was not found or does not belong to your account." });
+    }
+    const jobs = await Job.find({ _id: { $in: uniqueJobIds } })
+      .select("_id keySkills location").lean();
+    const jobsById = new Map(jobs.map((job) => [String(job._id).toLowerCase(), job]));
+    if (uniqueJobIds.some((id) => !jobsById.has(id))) {
+      return res.status(404).json({ message: "One or more requested jobs were not found." });
+    }
+    const matches = uniqueJobIds.map((jobId) => {
+      const job = jobsById.get(jobId);
+      return {
+        jobId,
+        ...calculateMatch(
+          cv.skills || cv.skillsDetected || [], job.keySkills || [], user.location, job.location
+        ),
+      };
+    });
+    return res.status(200).json({ matches });
+  } catch {
+    console.error("Batch application score preview failed.");
+    return res.status(500).json({ message: "Unable to preview application matches." });
+  }
+};
 
 const applyForJob = async (req, res) => {
   try {
@@ -1174,6 +1255,8 @@ const updateApplicationStatus =
   };
 
 module.exports = {
+  previewApplicationMatches,
+  previewApplicationMatch,
   applyForJob,
   getApplications,
   updateApplicationStatus,

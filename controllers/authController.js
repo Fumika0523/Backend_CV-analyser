@@ -4,7 +4,7 @@ const User = require("../Model/UserModel");
 const bcrypt = require("bcryptjs");
 const sendEmail = require("../utils/sendEmail")
 const getNextSequence = require("../utils/getNextSequence");
-const CV = require("../Model/CVModel");
+const CV = require("../Model/CvModel");
 const {
   otpEmailTemplate,
 } = require("../utils/emailTemplates");

@@ -29,6 +29,13 @@ const CvSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Optional display name; older CV records remain valid.
+    originalFileName: {
+      type: String,
+      trim: true,
+      maxlength: 255,
+    },
+
     filePath: {
       type: String,
       required: true,

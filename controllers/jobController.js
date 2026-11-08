@@ -1,7 +1,7 @@
 const Job = require("../Model/jobModel");
 const Skill = require("../Model/skillsModel");
 const User = require("../Model/UserModel");
-const CV = require("../Model/CVModel");
+const CV = require("../Model/CvModel");
 const Application = require("../Model/applicationModel");
 const Company = require("../Model/companyModel");
 const {
@@ -1320,18 +1320,15 @@ exports.getMatchedJobsForCandidate = async (req, res) => {
         jobId: job._id,
 
         title: job.title,
-
+        createdAt: job.createdAt,
+applicationEndDate: job.applicationEndDate,
         companyName:
           job.companyId?.companyName ||
           "Company",
 
-        companyUrl:
-  job.companyId?.companyUrl || "",
-
+        companyUrl: job.companyId?.companyUrl || "",
         location: job.location,
-
         salary: job.salary,
-
         jobType: job.jobType,
 
         workMode: job.workMode,

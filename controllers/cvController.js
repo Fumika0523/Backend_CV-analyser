@@ -1,4 +1,5 @@
-const CV = require("../Model/CVModel");
+const CV = require("../Model/CvModel");
+const { sanitizeOriginalFileName } = require("../utils/cvFileName");
 const User = require("../Model/UserModel");
 const path = require("path");
 const fs = require("fs/promises");
@@ -172,6 +173,7 @@ await deleteTempFile(req.file.path);
       candidateId: candidateNumericId,
       version,
       fileName: newFileName,
+      originalFileName: sanitizeOriginalFileName(req.file.originalname),
       filePath: `/uploads/cvs/${candidateNumericId}/${newFileName}`,
       rawText: analysis.rawText,
 skills: analysis.skillsDetected || [],
@@ -277,6 +279,7 @@ if (!validPDF) {
       candidateId: null,
       guestSessionId,
       fileName: req.file.filename,
+      originalFileName: sanitizeOriginalFileName(req.file.originalname),
       filePath: `/uploads/cvs/${req.file.filename}`,
       rawText: analysis.rawText,
 skills: analysis.skillsDetected || [],
