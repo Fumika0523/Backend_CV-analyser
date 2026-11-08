@@ -475,40 +475,30 @@ const applyForJob = async (req, res) => {
         note: "",
       });
 
-    /*
-     * Candidate confirmation email.
-     */
-    const candidateHtml =
-      candidateApplicationTemplate(
-        user,
-        job
-      );
-
-    /*
-     * Company/recruiter notification email.
-     */
-    const companyHtml =
-      companyApplicationTemplate(
-        user,
-        job
-      );
-
-    await sendEmail({
-      to: user.email,
-      subject:
-        "Application submitted successfully",
-      html:
-        candidateHtml,
-    });
+    // Notification failures must not change the result of a saved application.
+    try {
+      const candidateHtml = candidateApplicationTemplate(user, job);
+      await sendEmail({
+        to: user.email,
+        subject: "Application submitted successfully",
+        html: candidateHtml,
+      });
+    } catch {
+      // Do not log recipients, template content or provider error details.
+      console.error("Candidate application notification failed after application was saved.");
+    }
 
     if (job.createdBy?.email) {
-      await sendEmail({
-        to: job.createdBy.email,
-        subject:
-          "New job application received",
-        html:
-          companyHtml,
-      });
+      try {
+        const companyHtml = companyApplicationTemplate(user, job);
+        await sendEmail({
+          to: job.createdBy.email,
+          subject: "New job application received",
+          html: companyHtml,
+        });
+      } catch {
+        console.error("Company application notification failed after application was saved.");
+      }
     }
 
     return res.status(201).json({
