@@ -1,5 +1,46 @@
 const fs = require("fs/promises");
 
+const providerStatus = (error) =>
+  Number(error?.statusCode || error?.status);
+
+// One retry only. Do not retry earlier than a long provider-requested delay.
+const retryDelay = (error) => {
+  const headers = error?.headers || error?.response?.headers;
+  const value = headers?.get?.("retry-after") ??
+    headers?.["retry-after"] ?? headers?.["Retry-After"];
+  const text = typeof value === "string" ? value.trim() : "";
+  let requestedDelay = 0;
+  if (/^\d+(\.\d+)?$/.test(text)) {
+    requestedDelay = Number(text) * 1000;
+  } else if (text) {
+    requestedDelay = Math.max(0, Date.parse(text) - Date.now()) || 0;
+  }
+  if (requestedDelay > 10000) return null;
+  return Math.max(1000 + Math.floor(Math.random() * 250), requestedDelay);
+};
+
+const createInteraction = async (ai, request, fallbackModel, sleep) => {
+  try {
+    return await ai.interactions.create(request, {
+      retries: { strategy: "none" },
+      timeout_ms: 30000,
+    });
+  } catch (error) {
+    // Quota/rate limits (429) and other errors are not overload retries.
+    if (providerStatus(error) !== 503) throw error;
+    const delay = retryDelay(error);
+    if (delay === null) throw error;
+    await sleep(delay);
+    return ai.interactions.create({
+      ...request,
+      model: fallbackModel?.trim() || request.model,
+    }, {
+      retries: { strategy: "none" },
+      timeout_ms: 30000,
+    });
+  }
+};
+
 const JOB_TYPES = [
   "Full-time",
   "Part-time",
@@ -297,7 +338,12 @@ const normaliseExtractedJob = (rawJob = {}) => {
  * This endpoint analyses the PDF only.
  * It does not create a Job document in MongoDB.
  */
-exports.analyseJobDescriptionPDF = async (req, res) => {
+const createAnalyseJobDescriptionPDFHandler = ({
+  loadSDK = () => import("@google/genai"),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  fileSystem = fs,
+  env = process.env,
+} = {}) => async (req, res) => {
   const temporaryFilePath = req.file?.path;
 
   try {
@@ -314,7 +360,7 @@ exports.analyseJobDescriptionPDF = async (req, res) => {
       });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!env.GEMINI_API_KEY) {
       return res.status(500).json({
         message:
           "The Gemini API key has not been configured.",
@@ -327,19 +373,17 @@ exports.analyseJobDescriptionPDF = async (req, res) => {
      * Dynamic import allows us to load the modern ESM Gemini SDK
      * without changing your whole backend to type: module.
      */
-    const { GoogleGenAI } = await import(
-      "@google/genai"
-    );
+    const { GoogleGenAI } = await loadSDK();
 
     const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: env.GEMINI_API_KEY,
     });
 
     /*
      * Gemini expects the PDF as a base64 string when using
      * inline document input.
      */
-    const pdfBuffer = await fs.readFile(
+    const pdfBuffer = await fileSystem.readFile(
       temporaryFilePath
     );
 
@@ -384,9 +428,9 @@ Rules:
      * a JSON Schema response format in the same request.
      */
     const interaction =
-      await ai.interactions.create({
+      await createInteraction(ai, {
         model:
-          process.env.GEMINI_MODEL ||
+          env.GEMINI_MODEL ||
           "gemini-3.6-flash",
 
         input: [
@@ -406,7 +450,7 @@ Rules:
           mime_type: "application/json",
           schema: jobExtractionSchema,
         },
-      });
+      }, env.GEMINI_FALLBACK_MODEL, sleep);
 
     if (!interaction.output_text) {
       throw new Error(
@@ -420,12 +464,7 @@ Rules:
       parsedOutput = JSON.parse(
         interaction.output_text
       );
-    } catch (parseError) {
-      console.error(
-        "Gemini JSON parsing error:",
-        parseError
-      );
-
+    } catch {
       throw new Error(
         "Gemini returned invalid JSON."
       );
@@ -443,14 +482,10 @@ Rules:
     });
 
 } catch (error) {
-  console.error(
-    "Job-description analysis error:",
-    error
-  );
+  console.error("Job-description analysis failed.");
 
   // Get the status code from the AI provider.
-  const errorStatus =
-    error.statusCode || error.status;
+  const errorStatus = providerStatus(error);
 
   // 429 means Gemini has reached a rate or quota limit.
   if (errorStatus === 429) {
@@ -460,15 +495,17 @@ Rules:
     });
   }
 
+  if (errorStatus === 503) {
+    return res.status(503).json({
+      message:
+        "AI analysis is temporarily busy due to high demand. Please try again shortly.",
+    });
+  }
+
   // Handle other AI analysis errors.
   return res.status(502).json({
     message:
-      "The AI could not analyse this job description.",
-
-    details:
-      process.env.NODE_ENV === "development"
-        ? error.message
-        : undefined,
+      "The AI could not analyse this job description. Please try again later.",
   });
 } finally {
     /*
@@ -476,14 +513,14 @@ Rules:
      * Delete it whether the analysis succeeds or fails.
      */
     if (temporaryFilePath) {
-      await fs
+      await fileSystem
         .unlink(temporaryFilePath)
-        .catch((deleteError) => {
-          console.error(
-            "Temporary PDF deletion error:",
-            deleteError
-          );
+        .catch(() => {
+          console.error("Temporary PDF deletion failed.");
         });
     }
   }
 };
+
+exports.createAnalyseJobDescriptionPDFHandler = createAnalyseJobDescriptionPDFHandler;
+exports.analyseJobDescriptionPDF = createAnalyseJobDescriptionPDFHandler();

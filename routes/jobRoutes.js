@@ -90,6 +90,10 @@ router.get(
 // ========================================
 router.get(
   "/guest/matched-jobs",
+  (req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  },
   getMatchedJobsForGuest
 );
 

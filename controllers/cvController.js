@@ -226,7 +226,8 @@ exports.guestUploadCV = async (req, res) => {
   //Get guestSessionId from frontend FormData
     const { guestSessionId } = req.body;
   
-    if (!guestSessionId) {
+    if (typeof guestSessionId !== "string" || !guestSessionId.trim()) {
+      if (req.file?.path) await deleteTempFile(req.file.path);
       return res.status(400).json({
         message: "Guest session ID is required",
       });
@@ -273,7 +274,7 @@ if (!validPDF) {
 
     // CV collection should store only Latest guest CV.
  const cv = await CV.findOneAndUpdate(
-  { guestSessionId },
+  { guestSessionId, candidateId: null },
   {
     $set: {
       candidateId: null,
@@ -294,7 +295,7 @@ skills: analysis.skillsDetected || [],
 
 // Skill collection stores latest guest skills for matching.
 const skill = await Skill.findOneAndUpdate(
-  { guestSessionId },
+  { guestSessionId, candidateId: null },
   {
     $set: {
       candidateId: null,
@@ -338,6 +339,10 @@ exports.getLatestCV = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role !== "candidate") {
+      return res.status(403).json({ message: "Only candidates can view CVs" });
     }
 
     const candidateId = user.userId;
@@ -455,16 +460,25 @@ exports.downloadCV = async (req, res) => {
       });
     }
 
+    let downloadPath = absolutePath;
     try {
-      await fs.access(absolutePath);
+      await fs.access(downloadPath);
     } catch {
-      return res.status(404).json({
-        message: "CV file not found.",
-      });
+      // Guest CVs use a flat path in the database but Multer stores them in temp.
+      if (/^\d+-\d+\.pdf$/i.test(cv.fileName) && path.join(cvRoot, cv.fileName) === absolutePath) {
+        downloadPath = path.join(__dirname, "../uploads/temp", cv.fileName);
+        try {
+          await fs.access(downloadPath);
+        } catch {
+          return res.status(404).json({ message: "CV file not found." });
+        }
+      } else {
+        return res.status(404).json({ message: "CV file not found." });
+      }
     }
 
     return res.download(
-      absolutePath,
+      downloadPath,
       cv.fileName
     );
   } catch (error) {

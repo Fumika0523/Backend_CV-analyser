@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const sendEmail = require("../utils/sendEmail")
 const getNextSequence = require("../utils/getNextSequence");
 const CV = require("../Model/CvModel");
+const Skill = require("../Model/skillsModel");
 const {
   otpEmailTemplate,
 } = require("../utils/emailTemplates");
@@ -126,6 +127,9 @@ exports.signUp = async (req, res) => {
         5 * 60 * 1000,
 
       isVerified: false,
+      pendingGuestSessionId: role === "candidate" && typeof guestSessionId === "string"
+        ? guestSessionId.trim() || undefined
+        : undefined,
     };
 
     /*
@@ -198,33 +202,6 @@ exports.signUp = async (req, res) => {
         "company_admin";
 
       await user.save();
-    }
-
-    if (
-      role === "candidate" &&
-      req.body.guestSessionId
-    ) {
-      const updatedCV =
-        await CV.updateMany(
-          {
-            guestSessionId:
-              req.body.guestSessionId,
-          },
-          {
-            $set: {
-              candidateId:
-                user.userId,
-
-              guestSessionId:
-                null,
-            },
-          }
-        );
-
-      console.log(
-        "Guest CV link result:",
-        updatedCV
-      );
     }
 
     await sendEmail({
@@ -396,33 +373,7 @@ exports.verifyOtp = async (req, res) => {
 
     // 2. Find user
 
-const user = await User.findById(_id);
-// Check the ID received from Postman
-console.log("Requested ID:", _id);
-
-// Count users in the connected database
-console.log(
-  "Total users:",
-  await User.countDocuments()
-);
-
-// Show the first 10 stored user IDs
-const users = await User.find({})
-  .select("_id")
-  .limit(10);
-
-console.log(
-  "Stored IDs:",
-  users.map((u) => u._id.toString())
-);
-// DEBUG: Check which database the backend is using
-console.log("Database:", User.db.name);
-
-// DEBUG: Check the MongoDB collection
-console.log("Collection:", User.collection.name);
-
-// DEBUG: Check whether the user was found
-console.log("User found:", Boolean(user));
+    const user = await User.findById(_id).select("+pendingGuestSessionId");
     if (!user) {
       return res.status(404).json({
         message:
@@ -525,6 +476,24 @@ if (user.otpAttempts >= 5) {
         message:
           "Company account is not linked to a company.",
       });
+    }
+
+    if (user.role === "candidate" && user.pendingGuestSessionId) {
+      const guestSessionId = user.pendingGuestSessionId;
+      const cv = await CV.findOneAndUpdate(
+        { guestSessionId, candidateId: { $in: [null, user.userId] } },
+        { $set: { candidateId: user.userId } },
+        { returnDocument: "after" }
+      );
+      if (cv) {
+        await Skill.updateOne(
+          { candidateId: user.userId },
+          { $set: { userMongoId: user._id, skills: cv.skills || [] } },
+          { upsert: true }
+        );
+        await CV.updateOne({ _id: cv._id }, { $unset: { guestSessionId: "" } });
+      }
+      user.pendingGuestSessionId = undefined;
     }
 
     // 6. Mark account as verified

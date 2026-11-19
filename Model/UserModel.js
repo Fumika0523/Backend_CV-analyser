@@ -104,6 +104,7 @@ otpAttempts: {
   default: 0,
 },
 
+    pendingGuestSessionId: { type: String, select: false },
     otpExpiry: Date,
     isVerified: {
       type: Boolean,

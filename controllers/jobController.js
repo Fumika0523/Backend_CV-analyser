@@ -1372,12 +1372,58 @@ applicationEndDate: job.applicationEndDate,
   }
 };
 
+// Build a guest-only response without public job IDs or populated employer data.
+const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function guestJobPreview(job, matchScore) {
+  const names = [job.companyId?.companyName, job.companyName, job.postedByName]
+    .filter((value) => typeof value === "string" && value.trim())
+    .map((value) => escapePattern(value.trim()));
+  const employerNames = names.length
+    ? new RegExp("(?<![\\p{L}\\p{N}])(?:" + names.join("|") + ")(?![\\p{L}\\p{N}])", "giu")
+    : null;
+
+  function previewText(value) {
+    if (typeof value !== "string") return undefined;
+    const text = value
+      .replace(/(?:https?:\/\/|www\.)[^\s,;]+/gi, "")
+      .replace(/[\w.+%-]+@[\w.-]+\.[a-z]{2,}/gi, "")
+      .replace(/\b(?:[\w-]+\.)+(?:com|org|net|io|co|uk|ai|dev|jobs)\b(?:\/[^\s,;]*)?/gi, "")
+      .replace(/(?<![\d\p{L}])(?:[+0]\d(?:[(). -]*\d){7,13}|\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4})(?![\d\p{L}])/gu, "");
+    return (employerNames ? text.replace(employerNames, "") : text)
+      .replace(/\s+/g, " ").trim() || undefined;
+  }
+
+  const location = job.location;
+  const title = previewText(job.title)?.replace(/\s+(?:at|with)$/i, "");
+  return {
+    title: title || "Job opening",
+    location: location && typeof location === "object"
+      ? {
+          city: previewText(location.city),
+          country: previewText(location.country),
+          county: previewText(location.county),
+          region: previewText(location.region),
+        }
+      : previewText(location),
+    salary: previewText(job.salary),
+    jobType: previewText(job.jobType),
+    workMode: previewText(job.workMode),
+    category: previewText(job.category),
+    industry: previewText(job.industry),
+    createdAt: job.createdAt instanceof Date ? job.createdAt : undefined,
+    applicationEndDate: job.applicationEndDate instanceof Date ? job.applicationEndDate : undefined,
+    keySkills: Array.isArray(job.keySkills) ? job.keySkills.map(previewText).filter(Boolean) : [],
+    matchScore,
+  };
+}
+
 // GET MATCHED JOBS FOR GUEST
 exports.getMatchedJobsForGuest = async (req, res) => {
   try {
     const { guestSessionId } = req.query;
 
-    if (!guestSessionId) {
+    if (typeof guestSessionId !== "string" || !guestSessionId.trim()) {
       return res.status(400).json({
         message:
           "Guest session ID is required",
@@ -1388,15 +1434,16 @@ exports.getMatchedJobsForGuest = async (req, res) => {
      * Get skills extracted from
      * the guest's uploaded CV.
      */
-    const guestSkill =
-      await Skill.findOne({
-        guestSessionId,
-      });
+    const guestSession = { guestSessionId, candidateId: null };
+    const [guestCv, guestSkill] = await Promise.all([
+      CV.exists(guestSession),
+      Skill.findOne(guestSession),
+    ]);
 
-    if (!guestSkill) {
+    if (!guestCv || !guestSkill) {
       return res.status(404).json({
         message:
-          "No skills found for this guest",
+          "No uploaded CV session found for this guest",
       });
     }
 
@@ -1448,7 +1495,7 @@ exports.getMatchedJobsForGuest = async (req, res) => {
     })
       .populate(
         "companyId",
-        "companyName companyUrl location isActive"
+        "companyName isActive"
       )
       .lean();
 
@@ -1539,22 +1586,6 @@ exports.getMatchedJobsForGuest = async (req, res) => {
         );
 
       /*
-       * Required skills the guest
-       * does not have.
-       */
-      const missingSkills =
-        jobSkills.filter(
-          (jobSkill) =>
-            !guestSkills.some(
-              (guestSkillItem) =>
-                isGuestSkillMatch(
-                  guestSkillItem,
-                  jobSkill
-                )
-            )
-        );
-
-      /*
        * Guest score is SKILLS ONLY.
        * Example:
        * 3 required skills
@@ -1575,51 +1606,7 @@ exports.getMatchedJobsForGuest = async (req, res) => {
         continue;
       }
 
-      results.push({
-        jobId:
-          job._id,
-
-        title:
-          job.title,
-
-        companyName:
-          job.companyId
-            ?.companyName ||
-          "Company",
-
-        companyUrl:
-          job.companyUrl ||
-          job.companyId
-            ?.companyUrl ||
-          "",
-
-        location:
-          job.location,
-
-        salary:
-          job.salary,
-
-        jobType:
-          job.jobType,
-
-        workMode:
-          job.workMode,
-
-        category:
-          job.category,
-
-        industry:
-          job.industry,
-
-        matchedSkills,
-
-        missingSkills,
-
-        /*
-         * Guest score is skills only.
-         */
-        matchScore,
-      });
+      results.push(guestJobPreview(job, matchScore));
     }
 
     /*
